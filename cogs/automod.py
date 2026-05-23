@@ -69,46 +69,62 @@ class AutoMod(commands.Cog):
         await interaction.response.defer(ephemeral=True)
         guild = interaction.guild
         
+        # Bỏ qua thư viện discord.py, cấu hình JSON nguyên thủy gửi thẳng cho API
+        rules = [
+            {
+                "name": "🛡️ Elfaria - Lọc ngôn từ độc hại",
+                "event_type": 1,
+                "trigger_type": 4, 
+                "trigger_metadata": {"presets": [1, 2, 3]}, # Lọc tục tĩu, 18+, xúc phạm
+                "actions": [{"type": 1}], 
+                "enabled": True
+            },
+            {
+                "name": "🛡️ Elfaria - Chống Spam",
+                "event_type": 1,
+                "trigger_type": 3,
+                "actions": [{"type": 1}],
+                "enabled": True
+            },
+            {
+                "name": "🛡️ Elfaria - Chống Spam Tag",
+                "event_type": 1,
+                "trigger_type": 5, 
+                "trigger_metadata": {"mention_total_limit": 5}, # Chặn nếu tag quá 5 người
+                "actions": [{"type": 1}],
+                "enabled": True
+            }
+        ]
+
+        import aiohttp
+        import os
+        
         try:
-            # Quy tắc 1: Lọc ngôn từ độc hại (Sử dụng hệ thống bộ lọc có sẵn của Discord)
-            await guild.create_automod_rule(
-                name="🛡️ Elfaria - Lọc ngôn từ độc hại",
-                event_type=discord.AutoModRuleEventType.message_send,
-                trigger_type=discord.AutoModRuleTriggerType.keyword_preset,
-                trigger_metadata=discord.AutoModTriggerMetadata(
-                    presets=[1, 2, 3]  # 1: Từ tục tĩu, 2: Nội dung người lớn, 3: Xúc phạm/Slurs
-                ),
-                actions=[discord.AutoModRuleAction(type=discord.AutoModRuleActionType.block_message)],
-                enabled=True
-            )
-
-            # Quy tắc 2: Tự động chặn tin nhắn bị nghi ngờ là Spam
-            await guild.create_automod_rule(
-                name="🛡️ Elfaria - Chống Spam",
-                event_type=discord.AutoModRuleEventType.message_send,
-                trigger_type=discord.AutoModRuleTriggerType.spam,
-                actions=[discord.AutoModRuleAction(type=discord.AutoModRuleActionType.block_message)],
-                enabled=True
-            )
-
-            # Quy tắc 3: Chặn các liên kết lừa đảo/Phishing
-            await guild.create_automod_rule(
-                name="🛡️ Elfaria - Chống Link Độc",
-                event_type=discord.AutoModRuleEventType.message_send,
-                trigger_type=discord.AutoModRuleTriggerType.harmful_link,
-                actions=[discord.AutoModRuleAction(type=discord.AutoModRuleActionType.block_message)],
-                enabled=True
-            )
+            # Lấy token từ file .env để tự động làm "thẻ căn cước" gọi API
+            token = os.getenv('DISCORD_TOKEN')
             
-            await interaction.followup.send("✅ Đã thiết lập thành công 3 quy tắc lớp khiên thép AutoMod chính thức cho Server này!")
-            
-        except discord.Forbidden:
-            await interaction.followup.send("❌ Bot không có đủ quyền `Quản lý Server` (Manage Server) để tạo bộ lọc.")
-        except discord.HTTPException as e:
-            if e.code == 50035:
-                await interaction.followup.send("⚠️ Server này đã có sẵn một số quy tắc AutoMod rồi, hãy kiểm tra lại nhé!")
-            else:
-                await interaction.followup.send(f"❌ Có lỗi mạng xảy ra từ phía Discord: {e}")
+            async with aiohttp.ClientSession() as session:
+                headers = {
+                    "Authorization": f"Bot {token}",
+                    "Content-Type": "application/json",
+                    "X-Audit-Log-Reason": "Elfaria AutoMod Setup"
+                }
+                url = f"https://discord.com/api/v10/guilds/{guild.id}/auto-moderation/rules"
+                
+                success_count = 0
+                for rule in rules:
+                    # Gắn trực tiếp Rules vào máy chủ Discord
+                    async with session.post(url, json=rule, headers=headers) as resp:
+                        if resp.status in (200, 201):
+                            success_count += 1
+                
+                if success_count > 0:
+                    await interaction.followup.send(f"✅ Đã thiết lập thành công {success_count} quy tắc lớp khiên thép AutoMod chính thức cho Server này!")
+                else:
+                    await interaction.followup.send("⚠️ Server này đã có sẵn các quy tắc AutoMod (không thể tạo trùng lặp) hoặc bot đang thiếu quyền `Quản lý Server`.")
+                    
+        except Exception as e:
+            await interaction.followup.send(f"❌ Có lỗi mạng xảy ra: {e}")
 
     # ================= BỘ LỌC TIN NHẮN TỰ ĐỘNG =================
     @commands.Cog.listener()
