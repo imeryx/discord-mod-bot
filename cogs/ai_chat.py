@@ -7,15 +7,15 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Hàm kiểm tra trạng thái bật/tắt từ Dashboard
-def is_module_enabled(module_name):
+# Hàm kiểm tra trạng thái bật/tắt theo ID Server (guild_id)
+def is_module_enabled(guild_id, module_name):
     try:
         if os.path.exists("config.json"):
             with open("config.json", "r", encoding="utf-8") as f:
                 config = json.load(f)
-                return config.get("modules", {}).get(module_name, True)
-    except:
-        pass
+                return config.get(str(guild_id), {}).get("modules", {}).get(module_name, True)
+    except Exception as e:
+        print(f"Lỗi đọc config.json: {e}")
     return True
 
 class AIChat(commands.Cog):
@@ -25,15 +25,17 @@ class AIChat(commands.Cog):
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
+        # Bỏ qua nếu là tin nhắn của bot khác hoặc không bị tag
         if message.author.bot or self.bot.user not in message.mentions:
             return
 
-        # 1. Kiểm tra xem module này có bị tắt trên web không
-        if not is_module_enabled("ai_chat"):
+        # Kiểm tra xem tính năng AI có bị tắt trên Server này không
+        if message.guild and not is_module_enabled(message.guild.id, "ai_chat"):
             return # Im lặng, không trả lời
 
         query = message.content.replace(f'<@{self.bot.user.id}>', '').strip()
-        if not query: return
+        if not query: 
+            return
 
         try:
             await message.add_reaction("🧠")
