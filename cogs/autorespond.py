@@ -9,18 +9,24 @@ class AutoRespond(commands.Cog):
 
     @commands.Cog.listener()
     async def on_ready(self):
-        print("-> Cog [AutoRespond] Đã sẵn sàng tương tác!")
+        print("-> Cog [AutoRespond] Đã sẵn sàng tương tác (Hỗ trợ Ảnh/GIF)!")
 
     # ================= CÁC LỆNH CẤU HÌNH =================
     @app_commands.command(name="add_response", description="Thêm một câu trả lời tự động cho server")
     @app_commands.default_permissions(manage_guild=True)
     @app_commands.describe(
-        trigger="Từ khóa hoặc câu kích hoạt (Ví dụ: xin chào)",
-        response="Câu trả lời của bot (Ví dụ: Chào bạn, chúc một ngày tốt lành!)"
+        trigger="Từ khóa hoặc câu kích hoạt (Ví dụ: meo meo)",
+        response="Câu trả lời của bot (Ví dụ: Gọi tôi có việc gì?)",
+        image_url="[Không bắt buộc] Link ảnh hoặc GIF hiển thị kèm (http...)"
     )
-    async def add_response(self, interaction: discord.Interaction, trigger: str, response: str):
-        database.add_autoresponse(interaction.guild.id, trigger, response)
-        await interaction.response.send_message(f"✅ Đã thêm AutoResponse!\nKhi ai đó gõ chính xác: `{trigger}`\nBot sẽ đáp lại: **{response}**", ephemeral=True)
+    async def add_response(self, interaction: discord.Interaction, trigger: str, response: str, image_url: str = None):
+        database.add_autoresponse(interaction.guild.id, trigger, response, image_url)
+        
+        msg = f"✅ Đã thêm AutoResponse!\n• Khi ai đó gõ: `{trigger}`\n• Bot sẽ đáp: **{response}**"
+        if image_url:
+            msg += f"\n• Kèm theo ảnh/GIF: [Nhấn vào để xem]({image_url})"
+            
+        await interaction.response.send_message(msg, ephemeral=True)
 
     @app_commands.command(name="remove_response", description="Xóa một câu trả lời tự động")
     @app_commands.default_permissions(manage_guild=True)
@@ -39,36 +45,38 @@ class AutoRespond(commands.Cog):
             return await interaction.response.send_message("Server này hiện chưa cài đặt AutoResponse nào.", ephemeral=True)
         
         msg = "📜 **Danh sách AutoRespond của Server:**\n"
-        for trig, resp in responses:
-            msg += f"• Nhắn `{trig}` ➡️ Đáp: `{resp}`\n"
+        for trig, resp, img in responses:
+            has_img = "📸 (Có ảnh)" if img else "📝 (Chỉ chữ)"
+            msg += f"• `{trig}` ➡️ {has_img}\n"
         
         await interaction.response.send_message(msg, ephemeral=True)
 
     # ================= XỬ LÝ LẮNG NGHE TIN NHẮN =================
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
-        # Bỏ qua tin nhắn do bot gửi hoặc tin nhắn DM
         if message.author.bot or not message.guild:
             return
 
-        # Kéo danh sách câu trả lời của server từ Database
         responses = database.get_autoresponses(message.guild.id)
         if not responses:
             return
 
         content_lower = message.content.lower().strip()
 
-        # Kiểm tra xem tin nhắn có trùng khớp với từ khóa nào không
-        for trigger, response in responses:
-            # Dùng toán tử == để yêu cầu người dùng gõ CHÍNH XÁC từ khóa thì bot mới rep
-            # (Tránh việc bot spam nhảy vào giữa cuộc trò chuyện bình thường)
+        for trigger, response, image_url in responses:
             if content_lower == trigger:
                 try:
-                    await message.channel.send(response)
+                    # Nếu có link ảnh, tạo khung Embed đẹp mắt
+                    if image_url:
+                        embed = discord.Embed(color=discord.Color.random())
+                        embed.set_image(url=image_url)
+                        await message.channel.send(content=response, embed=embed)
+                    # Nếu không có ảnh, chỉ gửi chữ bình thường
+                    else:
+                        await message.channel.send(content=response)
                 except Exception as e:
                     print(f"Lỗi gửi AutoRespond: {e}")
                 
-                # Bot chỉ rep 1 từ khóa đầu tiên tìm thấy rồi dừng vòng lặp
                 break 
 
 async def setup(bot):

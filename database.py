@@ -38,15 +38,19 @@ def setup_db():
             goodbye_channel_id INTEGER
         )
     ''')
-    # Bảng 6: Lưu trữ cấu hình AutoRespond
+# Bảng 6: Lưu trữ cấu hình AutoRespond (Đã thêm image_url)
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS autoresponses (
             guild_id INTEGER,
             trigger_word TEXT,
             response_text TEXT,
+            image_url TEXT,
             UNIQUE(guild_id, trigger_word)
         )
     ''')
+    # Lệnh nâng cấp bảng cũ (Sẽ tự động bỏ qua nếu bảng đã có cột này)
+    try: cursor.execute('ALTER TABLE autoresponses ADD COLUMN image_url TEXT')
+    except: pass
     
     # Lệnh tự động cập nhật bảng cũ cho an toàn (sẽ bỏ qua nếu đã có cột)
     try: cursor.execute('ALTER TABLE welcome_settings ADD COLUMN goodbye_channel_id INTEGER')
@@ -194,22 +198,19 @@ def get_welcome_config(guild_id):
             "goodbye_image": result[5]
         }
     return None
-# ================= CÁC HÀM XỬ LÝ AUTORESPOND =================
-def add_autoresponse(guild_id, trigger, response):
-    """Thêm hoặc cập nhật một câu trả lời tự động"""
+# ================= CÁC HÀM XỬ LÝ AUTORESPOND (CÓ ẢNH) =================
+def add_autoresponse(guild_id, trigger, response, image_url=None):
     conn = sqlite3.connect('bot_database.db')
     cursor = conn.cursor()
-    # Dùng ON CONFLICT để nếu từ khóa đã tồn tại thì tự động cập nhật câu trả lời mới
     cursor.execute('''
-        INSERT INTO autoresponses (guild_id, trigger_word, response_text)
-        VALUES (?, ?, ?)
-        ON CONFLICT(guild_id, trigger_word) DO UPDATE SET response_text = ?
-    ''', (guild_id, trigger.lower(), response, response))
+        INSERT INTO autoresponses (guild_id, trigger_word, response_text, image_url)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(guild_id, trigger_word) DO UPDATE SET response_text = ?, image_url = ?
+    ''', (guild_id, trigger.lower(), response, image_url, response, image_url))
     conn.commit()
     conn.close()
 
 def remove_autoresponse(guild_id, trigger):
-    """Xóa một từ khóa AutoRespond"""
     conn = sqlite3.connect('bot_database.db')
     cursor = conn.cursor()
     cursor.execute('DELETE FROM autoresponses WHERE guild_id = ? AND trigger_word = ?', (guild_id, trigger.lower()))
@@ -219,10 +220,9 @@ def remove_autoresponse(guild_id, trigger):
     return rows_deleted > 0
 
 def get_autoresponses(guild_id):
-    """Lấy danh sách tất cả AutoRespond của server"""
     conn = sqlite3.connect('bot_database.db')
     cursor = conn.cursor()
-    cursor.execute('SELECT trigger_word, response_text FROM autoresponses WHERE guild_id = ?', (guild_id,))
+    cursor.execute('SELECT trigger_word, response_text, image_url FROM autoresponses WHERE guild_id = ?', (guild_id,))
     results = cursor.fetchall()
     conn.close()
-    return results # Trả về một danh sách chứa các Tuple (từ_khóa, câu_trả_lời)
+    return results
