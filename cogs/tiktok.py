@@ -50,8 +50,8 @@ class TikTokDownloader(commands.Cog):
                                 picker_items = data.get("picker", [])
                                 files = []
                                 
-                                # Lọc lấy các đường dẫn định dạng ảnh
-                                img_urls = [item["url"] for item in picker_items if item.get("type") == "photo"]
+                                # Lọc lấy toàn bộ đường dẫn có trong album (bỏ qua điều kiện phải là "photo")
+                                img_urls = [item["url"] for item in picker_items if "url" in item]
                                 
                                 # Tiến hành tải hàng loạt (Tối đa 10 ảnh do giới hạn nghiêm ngặt của Discord)
                                 for idx, img_url in enumerate(img_urls[:10]):
