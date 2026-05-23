@@ -3,9 +3,21 @@ from discord.ext import commands
 import requests
 import os
 import io
+import json
 from dotenv import load_dotenv
 
 load_dotenv()
+
+# Hàm kiểm tra trạng thái bật/tắt từ Dashboard
+def is_module_enabled(module_name):
+    try:
+        if os.path.exists("config.json"):
+            with open("config.json", "r", encoding="utf-8") as f:
+                config = json.load(f)
+                return config.get("modules", {}).get(module_name, True)
+    except:
+        pass
+    return True
 
 class ImageTools(commands.Cog):
     def __init__(self, bot):
@@ -14,7 +26,11 @@ class ImageTools(commands.Cog):
 
     @commands.command(name="tachnen", aliases=["removebg", "bgremove"])
     async def remove_background(self, ctx):
-        """Lệnh tách nền ảnh qua remove.bg API."""
+        # 1. Kiểm tra xem module này có bị tắt trên web không
+        if not is_module_enabled("image_tools"):
+            await ctx.send("❌ Tính năng Xử lý Ảnh hiện đang bị bảo trì/tắt bởi Admin.")
+            return
+
         if not ctx.message.attachments:
             await ctx.send("⚠️ Bạn cần gửi kèm một bức ảnh cùng với lệnh `!tachnen` nhé!")
             return
@@ -26,16 +42,14 @@ class ImageTools(commands.Cog):
             return
 
         if not self.api_key:
-            await ctx.send("⚠️ Lỗi: Chưa cấu hình API Key cho remove.bg trong file .env của máy chủ.")
+            await ctx.send("⚠️ Lỗi: Chưa cấu hình API Key cho remove.bg.")
             return
 
-        processing_msg = await ctx.send("⏳ Đang gửi ảnh sang máy chủ remove.bg để xử lý, đợi vài giây nhé...")
+        processing_msg = await ctx.send("⏳ Đang gửi ảnh sang máy chủ remove.bg để xử lý...")
         await ctx.message.add_reaction("✂️")
 
         try:
             image_bytes = await attachment.read()
-            
-            # Gửi dữ liệu sang API của remove.bg
             response = requests.post(
                 'https://api.remove.bg/v1.0/removebg',
                 files={'image_file': image_bytes},
@@ -43,19 +57,17 @@ class ImageTools(commands.Cog):
                 headers={'X-Api-Key': self.api_key},
             )
 
-            # Xử lý kết quả trả về
             if response.status_code == requests.codes.ok:
                 result_image = discord.File(io.BytesIO(response.content), filename=f"tachnen_{attachment.filename}.png")
                 await ctx.message.remove_reaction("✂️", self.bot.user)
                 await processing_msg.delete()
-                await ctx.send(content=f"✅ Xong ngay! Trả ảnh đã tách nền cực mượt cho {ctx.author.mention} nè:", file=result_image)
+                await ctx.send(content=f"✅ Xong ngay! Trả ảnh đã tách nền cho {ctx.author.mention}:", file=result_image)
             else:
                 await ctx.message.remove_reaction("✂️", self.bot.user)
-                await processing_msg.edit(content=f"⚠️ Máy chủ API báo lỗi (Code {response.status_code}). Có thể bạn đã dùng hết 50 lượt miễn phí tháng này!")
+                await processing_msg.edit(content=f"⚠️ Máy chủ API báo lỗi (Code {response.status_code}).")
                 
         except Exception as e:
             await ctx.message.remove_reaction("✂️", self.bot.user)
-            print(f"Lỗi kết nối: {e}")
             await processing_msg.edit(content="⚠️ Không thể kết nối với API tách nền, thử lại sau nhé!")
 
 async def setup(bot):

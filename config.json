@@ -1,0 +1,7 @@
+{
+    "bot_prefix": "!",
+    "modules": {
+        "ai_chat": true,
+        "image_tools": true
+    }
+}
