@@ -11,7 +11,7 @@ class TikTokDownloader(commands.Cog):
 
     @commands.Cog.listener()
     async def on_ready(self):
-        print("-> Cog [TikTok] Đã sẵn sàng xử lý cả Video nặng và Ảnh Slideshow!")
+        print("-> Cog [TikTok] Đã sẵn sàng (Bản tối ưu Tốc độ & Giao diện)!")
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
@@ -43,7 +43,6 @@ class TikTokDownloader(commands.Cog):
                                     image_urls = item_data["images"]
                                     files = []
                                     
-                                    # Discord chỉ cho phép tối đa 10 file/tin nhắn
                                     for idx, img_url in enumerate(image_urls[:10]):
                                         async with session.get(img_url) as img_resp:
                                             if img_resp.status == 200:
@@ -53,36 +52,47 @@ class TikTokDownloader(commands.Cog):
                                     if files:
                                         msg_content = f"📸 **{author}**: {title}"
                                         if len(image_urls) > 10:
-                                            msg_content += f"\n*(Chỉ hiển thị 10/{len(image_urls)} ảnh do giới hạn của Discord)*"
+                                            msg_content += f"\n*(Chỉ hiển thị 10/{len(image_urls)} ảnh do giới hạn)*"
                                             
                                         try: await message.edit(suppress=True)
                                         except: pass
-                                        
                                         await message.reply(content=msg_content, files=files)
                                 
                                 # ================= XỬ LÝ DẠNG VIDEO =================
                                 else:
                                     video_url = item_data.get("play")
+                                    # Lấy sẵn dung lượng trực tiếp từ API (đơn vị: bytes)
+                                    video_size = item_data.get("size", 0) 
+                                    limit_bytes = message.guild.filesize_limit
+
                                     if video_url:
-                                        async with session.get(video_url) as vid_resp:
-                                            if vid_resp.status == 200:
-                                                video_bytes = await vid_resp.read()
-                                                
-                                                # Lấy giới hạn dung lượng thực tế của Server (25MB, 50MB hoặc 100MB)
-                                                limit_bytes = message.guild.filesize_limit
-                                                
-                                                # Kỹ thuật của Keto: Nếu quá nặng, gửi link thô để Discord tự Embed
-                                                if len(video_bytes) > limit_bytes:
-                                                    await message.reply(
-                                                        f"🎥 **{author}**: {title}\n"
-                                                        f"⚠️ *Video này nặng {len(video_bytes)/(1024*1024):.1f}MB (Vượt mức cho phép của Server).* Bạn xem qua link trực tiếp này nhé:\n{video_url}"
-                                                    )
-                                                # Nếu trong giới hạn, tải file lên bình thường
-                                                else:
-                                                    file = discord.File(io.BytesIO(video_bytes), filename=f"tiktok_{message.author.name}.mp4")
-                                                    try: await message.edit(suppress=True)
-                                                    except: pass
-                                                    await message.reply(content=f"🎥 **{author}**: {title}", file=file)
+                                        # TỐI ƯU TỐC ĐỘ: Nếu dung lượng API báo về lớn hơn sức chứa server
+                                        # Bỏ qua khâu tải video, xử lý quăng link ngay lập tức (Tốn 0.1s)
+                                        if video_size > limit_bytes:
+                                            # NGỤY TRANG LINK: Dùng cú pháp [Tên hiển thị](Link)
+                                            short_link = f"[🎥 Nhấn vào đây để xem trực tiếp video]({video_url})"
+                                            await message.reply(
+                                                f"🎬 **{author}**: {title}\n"
+                                                f"⚠️ *Video khá nặng ({video_size/(1024*1024):.1f}MB).*\n{short_link}"
+                                            )
+                                        else:
+                                            # Nếu nằm trong giới hạn, tiến hành tải thần tốc
+                                            async with session.get(video_url) as vid_resp:
+                                                if vid_resp.status == 200:
+                                                    video_bytes = await vid_resp.read()
+                                                    
+                                                    # Lớp bảo vệ dự phòng
+                                                    if len(video_bytes) > limit_bytes:
+                                                        short_link = f"[🎥 Nhấn vào đây để xem trực tiếp video]({video_url})"
+                                                        await message.reply(
+                                                            f"🎬 **{author}**: {title}\n"
+                                                            f"⚠️ *Video nặng ({len(video_bytes)/(1024*1024):.1f}MB).*\n{short_link}"
+                                                        )
+                                                    else:
+                                                        file = discord.File(io.BytesIO(video_bytes), filename=f"tiktok_{message.author.name}.mp4")
+                                                        try: await message.edit(suppress=True)
+                                                        except: pass
+                                                        await message.reply(content=f"🎥 **{author}**: {title}", file=file)
 
                                 # Đổi icon trạng thái sang Hoàn tất
                                 try:
