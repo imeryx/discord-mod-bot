@@ -70,17 +70,13 @@ class AutoMod(commands.Cog):
         guild = interaction.guild
         
         try:
-            # Quy tắc 1: Sử dụng bộ lọc ngôn từ có sẵn của Discord
+            # Quy tắc 1: Lọc ngôn từ độc hại (Sử dụng hệ thống bộ lọc có sẵn của Discord)
             await guild.create_automod_rule(
                 name="🛡️ Elfaria - Lọc ngôn từ độc hại",
                 event_type=discord.AutoModRuleEventType.message_send,
                 trigger_type=discord.AutoModRuleTriggerType.keyword_preset,
-                trigger_metadata=discord.AutoModPreservedWords( # Đã sửa ở đây
-                    presets=[
-                        discord.AutoModRulePresetType.profanity,
-                        discord.AutoModRulePresetType.sexual_content,
-                        discord.AutoModRulePresetType.slurs
-                    ]
+                trigger_metadata=discord.AutoModTriggerMetadata(
+                    presets=[1, 2, 3]  # 1: Từ tục tĩu, 2: Nội dung người lớn, 3: Xúc phạm/Slurs
                 ),
                 actions=[discord.AutoModRuleAction(type=discord.AutoModRuleActionType.block_message)],
                 enabled=True
