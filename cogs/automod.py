@@ -3,6 +3,8 @@ from discord.ext import commands
 from discord import app_commands
 import database
 from cogs.moderation import apply_auto_punishment 
+import aiohttp
+import os
 
 class AutoMod(commands.Cog):
     def __init__(self, bot):
@@ -20,7 +22,7 @@ class AutoMod(commands.Cog):
         self.word_cache[guild_id] = words
         return words
 
-    # ================= CÁC LỆNH QUẢN LÝ TỪ CẤM =================
+    # ================= CÁC LỆNH QUẢN LÝ TỪ CẤM (BOT-SIDE) =================
     @app_commands.command(name="addword", description="Thêm một từ vào danh sách cấm của server")
     @app_commands.default_permissions(manage_guild=True)
     async def addword(self, interaction: discord.Interaction, word: str):
@@ -61,24 +63,27 @@ class AutoMod(commands.Cog):
         # Nối các từ lại bằng dấu phẩy
         word_list = ", ".join([f"`{w}`" for w in words])
         await interaction.response.send_message(f"📜 **Danh sách từ cấm:**\n{word_list}", ephemeral=True)
-        
-    # ================= THIẾT LẬP NATIVE AUTOMOD ĐỂ NHẬN BADGE =================
-    @app_commands.command(name="automod_setup", description="Tự động cài đặt lớp khiên AutoMod chính chủ của Discord")
+
+
+    # ================= THIẾT LẬP NATIVE AUTOMOD ĐỂ NHẬN BADGE (SERVER-SIDE) =================
+    @app_commands.command(name="automod_setup", description="Tự động cài đặt 5 lớp khiên AutoMod chính chủ của Discord")
     @app_commands.default_permissions(administrator=True)
     async def automod_setup(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
         guild = interaction.guild
         
-        # Bỏ qua thư viện discord.py, cấu hình JSON nguyên thủy gửi thẳng cho API
+        # Cấu hình JSON nguyên thủy gửi thẳng cho API Discord (Tránh lỗi phiên bản thư viện)
         rules = [
+            # Quy tắc hệ thống 1: Ngôn từ độc hại
             {
                 "name": "🛡️ Elfaria - Lọc ngôn từ độc hại",
                 "event_type": 1,
                 "trigger_type": 4, 
-                "trigger_metadata": {"presets": [1, 2, 3]}, # Lọc tục tĩu, 18+, xúc phạm
+                "trigger_metadata": {"presets": [1, 2, 3]}, # 1: Tục tĩu, 2: 18+, 3: Xúc phạm
                 "actions": [{"type": 1}], 
                 "enabled": True
             },
+            # Quy tắc hệ thống 2: Chống Spam tin nhắn
             {
                 "name": "🛡️ Elfaria - Chống Spam",
                 "event_type": 1,
@@ -86,50 +91,69 @@ class AutoMod(commands.Cog):
                 "actions": [{"type": 1}],
                 "enabled": True
             },
+            # Quy tắc hệ thống 3: Chống Spam Tag thành viên
             {
                 "name": "🛡️ Elfaria - Chống Spam Tag",
                 "event_type": 1,
                 "trigger_type": 5, 
-                "trigger_metadata": {"mention_total_limit": 5}, # Chặn nếu tag quá 5 người
+                "trigger_metadata": {"mention_total_limit": 5}, # Giới hạn tối đa 5 tag/tin nhắn
+                "actions": [{"type": 1}],
+                "enabled": True
+            },
+            # Quy tắc tùy chỉnh 4: Chặn link lừa đảo / Scam quà tặng free
+            {
+                "name": "🛡️ Elfaria - Chặn lừa đảo (Scam/Phishing)",
+                "event_type": 1,
+                "trigger_type": 1, # 1: Custom Keyword Filter
+                "trigger_metadata": {
+                    "keyword_filter": ["*nhận quân huy miễn phí*", "*free polychromes*", "*nhận nitro*", "*hack garena*", "*tặng thẻ game*"]
+                },
+                "actions": [{"type": 1}],
+                "enabled": True
+            },
+            # Quy tắc tùy chỉnh 5: Chặn tin nhắn quảng cáo buôn bán trái phép / Tool hack
+            {
+                "name": "🛡️ Elfaria - Chặn quảng cáo rác/Tool Hack",
+                "event_type": 1,
+                "trigger_type": 1,
+                "trigger_metadata": {
+                    "keyword_filter": ["*bán tool*", "*hack token*", "*kéo rank*", "*mua data*", "*bán mã nguồn*"]
+                },
                 "actions": [{"type": 1}],
                 "enabled": True
             }
         ]
-
-        import aiohttp
-        import os
         
         try:
-            # Lấy token từ file .env để tự động làm "thẻ căn cước" gọi API
             token = os.getenv('DISCORD_TOKEN')
             
             async with aiohttp.ClientSession() as session:
                 headers = {
                     "Authorization": f"Bot {token}",
                     "Content-Type": "application/json",
-                    "X-Audit-Log-Reason": "Elfaria AutoMod Setup"
+                    "X-Audit-Log-Reason": "Elfaria AutoMod Full Setup"
                 }
                 url = f"https://discord.com/api/v10/guilds/{guild.id}/auto-moderation/rules"
                 
                 success_count = 0
                 for rule in rules:
-                    # Gắn trực tiếp Rules vào máy chủ Discord
                     async with session.post(url, json=rule, headers=headers) as resp:
                         if resp.status in (200, 201):
                             success_count += 1
                 
                 if success_count > 0:
-                    await interaction.followup.send(f"✅ Đã thiết lập thành công {success_count} quy tắc lớp khiên thép AutoMod chính thức cho Server này!")
+                    await interaction.followup.send(f"✅ Đã thiết lập thành công {success_count}/5 quy tắc lớp khiên thép AutoMod chính thức cho Server này!")
                 else:
-                    await interaction.followup.send("⚠️ Server này đã có sẵn các quy tắc AutoMod (không thể tạo trùng lặp) hoặc bot đang thiếu quyền `Quản lý Server`.")
+                    await interaction.followup.send("⚠️ Không thể tạo thêm quy tắc. Vui lòng kiểm tra xem server đã cài sẵn các quy tắc này chưa, hoặc bot có thiếu quyền `Quản lý Server` không nhé.")
                     
         except Exception as e:
-            await interaction.followup.send(f"❌ Có lỗi mạng xảy ra: {e}")
+            await interaction.followup.send(f"❌ Có lỗi xảy ra khi thiết lập hệ thống: {e}")
 
-    # ================= BỘ LỌC TIN NHẮN TỰ ĐỘNG =================
+
+    # ================= BỘ LỌC TIN NHẮN TỰ ĐỘNG (BOT-SIDE) =================
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
-        # Bỏ qua tin nhắn của bot hoặc tin nhắn nhắn riêng (DM)
+        # Bỏ qua tin nhắn của bot hoặc tin nhắn cá nhân DM
         if message.author.bot or not message.guild:
             return
 
@@ -138,30 +162,30 @@ class AutoMod(commands.Cog):
         # Lấy danh sách từ cấm từ Cache
         bad_words = self.word_cache.get(guild_id)
         
-        # Nếu server này chưa có trong Cache, tiến hành load từ Database
+        # Nếu server chưa có dữ liệu trong Cache, tải từ DB lên
         if bad_words is None:
             bad_words = self.load_cache(guild_id)
 
-        # Nếu server không có cài đặt từ cấm nào, bỏ qua luôn
+        # Nếu không có từ cấm nào được thiết lập, bỏ qua
         if not bad_words:
             return
 
         content_lower = message.content.lower()
 
-        # Kiểm tra vi phạm
+        # Kiểm tra trùng khớp từ cấm
         for word in bad_words:
             if word in content_lower:
                 try:
                     # Xóa tin nhắn vi phạm
                     await message.delete()
                     
-                    # Cảnh báo ra kênh chat
+                    # Cảnh báo nhanh ra kênh chat
                     await message.channel.send(
                         f"⚠️ {message.author.mention}, tin nhắn của bạn đã bị xóa vì chứa từ ngữ vi phạm!", 
                         delete_after=5.0
                     )
                     
-                    # Ghi vi phạm vào Database và hứng lấy tổng số cảnh báo hiện tại
+                    # Ghi nhận vi phạm vào Database và lấy tổng số cảnh báo hiện có
                     warn_count = database.add_warning(
                         guild_id=guild_id,
                         user_id=message.author.id,
@@ -169,18 +193,14 @@ class AutoMod(commands.Cog):
                         reason=f"Auto-Mod: Sử dụng từ cấm ({word})"
                     )
                     
-                    # Gọi hệ thống phạt tự động (Timeout/Kick/Ban) dựa trên số cảnh báo
+                    # Thực thi hình phạt tự động dựa trên số lần vi phạm
                     await apply_auto_punishment(message, message.author, warn_count)
-                    
-                    # Dừng vòng lặp kiểm tra nếu đã phát hiện lỗi
                     break 
                 
                 except discord.Forbidden:
-                    # Bỏ qua nếu bot bị thiếu quyền xóa tin nhắn ở một kênh nào đó
                     pass
                 except Exception as e:
-                    print(f"Lỗi Auto-Mod: {e}")
+                    print(f"Lỗi hệ thống Auto-Mod: {e}")
 
-# Đảm bảo 2 dòng này nằm sát lề trái và chữ await chỉ lùi vào đúng 1 tab (4 dấu cách)
 async def setup(bot):
     await bot.add_cog(AutoMod(bot))
