@@ -24,7 +24,7 @@ class AIChat(commands.Cog):
             await message.add_reaction("🧠")
             # Dùng model flash mới nhất, cực thông minh và cập nhật tốt
             response = self.client.models.generate_content(
-                model="gemini-1.5-flash",
+                model="gemini-2.5-flash",
                 contents=query
             )
             await message.remove_reaction("🧠", self.bot.user)
