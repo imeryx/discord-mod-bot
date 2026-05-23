@@ -12,7 +12,7 @@ class TikTokDownloader(commands.Cog):
 
     @commands.Cog.listener()
     async def on_ready(self):
-        print("-> Cog [TikTok] Động cơ Hybrid Cobalt & VxTikTok đã kích hoạt hoàn hảo!")
+        print("-> Cog [TikTok] Động cơ Hybrid Cobalt & tnktok.com đã kích hoạt hoàn hảo!")
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
@@ -89,14 +89,14 @@ class TikTokDownloader(commands.Cog):
                                                 except: pass
                                                 await message.reply(file=file)
                                     else:
-                                        # Nếu video quá nặng (> 25MB): Chuyển đổi link sang vxtiktok để ép Discord tự render Trình phát trực tiếp
-                                        vx_url = tiktok_url.replace("tiktok.com", "vxtiktok.com")
+                                        # Nếu video quá nặng (> 25MB): Chuyển đổi link sang tnktok.com để ép Discord tự render Trình phát trực tiếp
+                                        vx_url = tiktok_url.replace("tiktok.com", "tnktok.com")
                                         try: await message.edit(suppress=True)
                                         except: pass
                                         await message.reply(content=vx_url)
                             else:
                                 # Dự phòng khẩn cấp nếu Cobalt trả về cấu trúc lạ
-                                vx_url = tiktok_url.replace("tiktok.com", "vxtiktok.com")
+                                vx_url = tiktok_url.replace("tiktok.com", "tnktok.com")
                                 try: await message.edit(suppress=True)
                                 except: pass
                                 await message.reply(content=vx_url)
@@ -108,7 +108,7 @@ class TikTokDownloader(commands.Cog):
                             except: pass
                         else:
                             # Nếu API Cobalt bị nghẽn (Status code != 200), lập tức dùng VTikTok làm cứu cánh
-                            vx_url = tiktok_url.replace("tiktok.com", "vxtiktok.com")
+                            vx_url = tiktok_url.replace("tiktok.com", "tnktok.com")
                             try: await message.edit(suppress=True)
                             except: pass
                             await message.reply(content=vx_url)
@@ -118,7 +118,7 @@ class TikTokDownloader(commands.Cog):
                 except Exception as e:
                     print(f"Lỗi hệ thống đồng bộ TikTok: {e}")
                     # Lớp phòng vệ cuối cùng khi toàn bộ hệ thống gặp sự cố mạng
-                    vx_url = tiktok_url.replace("tiktok.com", "vxtiktok.com")
+                    vx_url = tiktok_url.replace("tiktok.com", "tnktok.com")
                     try:
                         await message.edit(suppress=True)
                         await message.reply(content=vx_url)
