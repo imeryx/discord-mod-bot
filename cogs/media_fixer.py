@@ -31,7 +31,7 @@ class MediaFixer(commands.Cog):
             
             elif domain == "instagram.com":
                 # Vũ khí 2: Sử dụng zzinstagram (tự động định tuyến máy chủ mượt nhất)
-                fixed_url = clean_url.replace("instagram.com", "ddinstagram.com")
+                fixed_url = clean_url.replace("instagram.com", "instagramez.com")
             
             elif domain == "reddit.com":
                 fixed_url = clean_url.replace("reddit.com", "rxddit.com")
