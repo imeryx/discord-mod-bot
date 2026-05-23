@@ -9,7 +9,7 @@ class AutoRespond(commands.Cog):
 
     @commands.Cog.listener()
     async def on_ready(self):
-        print("-> Cog [AutoRespond] Đã sẵn sàng tương tác (Hỗ trợ Ảnh/GIF)!")
+        print("-> Cog [AutoRespond] Đã sẵn sàng tương tác (Hỗ trợ Ảnh/GIF & Giao diện mới)!")
 
     # ================= CÁC LỆNH CẤU HÌNH =================
     @app_commands.command(name="add_response", description="Thêm một câu trả lời tự động cho server")
@@ -20,6 +20,7 @@ class AutoRespond(commands.Cog):
         image_url="[Không bắt buộc] Link ảnh hoặc GIF hiển thị kèm (http...)"
     )
     async def add_response(self, interaction: discord.Interaction, trigger: str, response: str, image_url: str = None):
+        # Lưu vào database
         database.add_autoresponse(interaction.guild.id, trigger, response, image_url)
         
         msg = f"✅ Đã thêm AutoResponse!\n• Khi ai đó gõ: `{trigger}`\n• Bot sẽ đáp: **{response}**"
@@ -42,27 +43,56 @@ class AutoRespond(commands.Cog):
     async def list_responses(self, interaction: discord.Interaction):
         responses = database.get_autoresponses(interaction.guild.id)
         if not responses:
-            return await interaction.response.send_message("Server này hiện chưa cài đặt AutoResponse nào.", ephemeral=True)
+            return await interaction.response.send_message("⚠️ Server này hiện chưa cài đặt AutoResponse nào.", ephemeral=True)
         
-        msg = "📜 **Danh sách AutoRespond của Server:**\n"
-        for trig, resp, img in responses:
-            has_img = "📸 (Có ảnh)" if img else "📝 (Chỉ chữ)"
-            msg += f"• `{trig}` ➡️ {has_img}\n"
+        # Thiết kế khung Embed chuyên nghiệp
+        embed = discord.Embed(
+            title="🤖 Danh Sách Trả Lời Tự Động",
+            description="Dưới đây là các từ khóa và phản hồi mà bot đã ghi nhớ:\n" + "━"*30,
+            color=discord.Color.blurple()
+        )
         
-        await interaction.response.send_message(msg, ephemeral=True)
+        for idx, (trig, resp, img) in enumerate(responses, 1):
+            # Cắt bớt câu trả lời nếu nó quá dài để tránh làm vỡ khung hiển thị
+            display_resp = resp if len(resp) <= 60 else resp[:57] + "..."
+            
+            # Gắn thêm icon nếu có ảnh
+            img_status = " 📸 *(Có đính kèm ảnh)*" if img else ""
+            
+            # Thêm từng mục vào Embed dưới dạng Field
+            embed.add_field(
+                name=f"{idx}. Từ khóa: `{trig}`",
+                value=f"↳ **Đáp lại:** {display_resp}{img_status}",
+                inline=False # Buộc mỗi từ khóa phải nằm trên một hàng riêng biệt
+            )
+            
+            # Khóa an toàn: Discord giới hạn tối đa 25 fields cho 1 Embed
+            if idx == 25:
+                embed.set_footer(text=f"Và còn nhiều từ khóa khác... (Đang hiển thị 25 mục đầu tiên)")
+                break
+                
+        # Nếu ít hơn 25 mục thì đếm tổng số lượng
+        if len(responses) <= 25:
+            embed.set_footer(text=f"Tổng cộng: {len(responses)} câu trả lời tự động.")
+
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
     # ================= XỬ LÝ LẮNG NGHE TIN NHẮN =================
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
+        # Bỏ qua tin nhắn do bot gửi hoặc tin nhắn DM
         if message.author.bot or not message.guild:
             return
 
+        # Kéo danh sách câu trả lời của server từ Database
         responses = database.get_autoresponses(message.guild.id)
         if not responses:
             return
 
+        # Chuyển tin nhắn của người dùng về chữ thường và xóa khoảng trắng thừa 2 đầu
         content_lower = message.content.lower().strip()
 
+        # Kiểm tra xem tin nhắn có trùng khớp với từ khóa nào không
         for trigger, response, image_url in responses:
             if content_lower == trigger:
                 try:
@@ -77,6 +107,7 @@ class AutoRespond(commands.Cog):
                 except Exception as e:
                     print(f"Lỗi gửi AutoRespond: {e}")
                 
+                # Bot chỉ rep 1 từ khóa đầu tiên tìm thấy rồi dừng vòng lặp
                 break 
 
 async def setup(bot):
