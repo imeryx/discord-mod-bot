@@ -27,7 +27,7 @@ class MediaFixer(commands.Cog):
 
             # ================= BỘ CHUYỂN ĐỔI LINK =================
             if domain in ["x.com", "twitter.com"]:
-                fixed_url = clean_url.replace("x.com", "fxtwitter.com").replace("twitter.com", "fxtwitter.com")
+                fixed_url = clean_url.replace("x.com", "fixupx.com").replace("twitter.com", "fxtwitter.com")
             
             elif domain == "instagram.com":
                 # Vũ khí 2: Sử dụng zzinstagram (tự động định tuyến máy chủ mượt nhất)
