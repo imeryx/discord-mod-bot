@@ -107,7 +107,7 @@ class TikTokDownloader(commands.Cog):
                                 await message.add_reaction("✅")
                             except: pass
                         else:
-                            # Nếu API Cobalt bị nghẽn (Status code != 200), lập tức dùng VxTikTok làm cứu cánh
+                            # Nếu API Cobalt bị nghẽn (Status code != 200), lập tức dùng VTikTok làm cứu cánh
                             vx_url = tiktok_url.replace("tiktok.com", "vxtiktok.com")
                             try: await message.edit(suppress=True)
                             except: pass
