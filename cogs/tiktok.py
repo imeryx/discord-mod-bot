@@ -11,7 +11,7 @@ class TikTokDownloader(commands.Cog):
 
     @commands.Cog.listener()
     async def on_ready(self):
-        print("-> Cog [TikTok] Đã sẵn sàng (Bản vượt Tường lửa Ảnh)!")
+        print("-> Cog [TikTok] Đã sẵn sàng (Bản dùng API TikWM không bị chặn IP)!")
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
@@ -25,95 +25,84 @@ class TikTokDownloader(commands.Cog):
             try: await message.add_reaction("⏳")
             except: pass
 
-            cobalt_api = "https://api.cobalt.tools/"
-            headers_api = {
-                "Accept": "application/json",
-                "Content-Type": "application/json"
-            }
-            payload = {
-                "url": tiktok_url,
-                "vQuality": "720",
-                "filenamePattern": "basic"
-            }
-            
-            # Vũ khí mới: Giả danh trình duyệt thật để không bị TikTok chặn tải
+            # Sử dụng API TikWM chuyên dụng cho TikTok thay vì Cobalt
+            tikwm_api = f"https://www.tikwm.com/api/?url={tiktok_url}"
             headers_dl = {
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
             }
 
             async with aiohttp.ClientSession() as session:
                 try:
-                    async with session.post(cobalt_api, json=payload, headers=headers_api) as resp:
+                    async with session.get(tikwm_api) as resp:
                         if resp.status == 200:
-                            data = await resp.json()
-                            status = data.get("status")
-
-                            # ================= XỬ LÝ DẠNG ẢNH =================
-                            if status == "picker":
-                                picker_items = data.get("picker", [])
-                                files = []
+                            res_json = await resp.json()
+                            
+                            # API TikWM trả về code 0 là thành công
+                            if res_json.get("code") == 0:
+                                data = res_json.get("data", {})
                                 
-                                img_urls = [item["url"] for item in picker_items if "url" in item]
-                                
-                                for idx, img_url in enumerate(img_urls[:10]):
-                                    async with session.get(img_url, headers=headers_dl) as img_resp:
-                                        if img_resp.status == 200:
-                                            img_bytes = await img_resp.read()
-                                            files.append(discord.File(io.BytesIO(img_bytes), filename=f"tiktok_img_{idx}.jpg"))
-                                        else:
-                                            print(f"Lỗi tải ảnh {idx}: Bị chặn với mã {img_resp.status}")
-
-                                if files:
-                                    try: await message.edit(suppress=True)
-                                    except: pass
+                                # ================= TRƯỜNG HỢP 1: BÀI ĐĂNG DẠNG ẢNH =================
+                                if "images" in data and isinstance(data["images"], list):
+                                    img_urls = data["images"]
+                                    files = []
                                     
-                                    # Báo cáo kết quả trực tiếp ra chat
-                                    extra_txt = f"\n*(Hệ thống tìm thấy {len(img_urls)} ảnh, tải thành công {len(files)} ảnh)*"
-                                    await message.reply(content=f"📸 **Album ảnh TikTok từ** {message.author.mention}:{extra_txt}", files=files)
+                                    # Tải tối đa 10 ảnh theo giới hạn của Discord
+                                    for idx, img_url in enumerate(img_urls[:10]):
+                                        async with session.get(img_url, headers=headers_dl) as img_resp:
+                                            if img_resp.status == 200:
+                                                img_bytes = await img_resp.read()
+                                                files.append(discord.File(io.BytesIO(img_bytes), filename=f"tiktok_img_{idx}.jpg"))
 
-                            # ================= XỬ LÝ DẠNG VIDEO =================
-                            elif status == "stream":
-                                video_url = data.get("url")
-                                if video_url:
+                                    if files:
+                                        try: await message.edit(suppress=True)
+                                        except: pass
+                                        extra_txt = f"\n*(Tải trực tiếp {len(files)}/{len(img_urls)} ảnh từ bài đăng)*"
+                                        await message.reply(content=f"📸 **Album TikTok từ** {message.author.mention}:{extra_txt}", files=files)
+                                        
+                                # ================= TRƯỜNG HỢP 2: BÀI ĐĂNG DẠNG VIDEO =================
+                                elif "play" in data:
+                                    video_url = data["play"]
+                                    
+                                    # Kiểm tra dung lượng video trước khi tải
                                     async with session.head(video_url) as head_resp:
                                         file_size = int(head_resp.headers.get('Content-Length', 0))
                                     
                                     limit_bytes = message.guild.filesize_limit
 
+                                    # Nếu video nhẹ hơn mức Discord cho phép
                                     if 0 < file_size <= limit_bytes:
                                         async with session.get(video_url, headers=headers_dl) as vid_resp:
                                             if vid_resp.status == 200:
                                                 video_bytes = await vid_resp.read()
                                                 file = discord.File(io.BytesIO(video_bytes), filename=f"tiktok_{message.author.name}.mp4")
-                                                
                                                 try: await message.edit(suppress=True)
                                                 except: pass
                                                 await message.reply(file=file)
                                     else:
+                                        # Video quá nặng, dùng Kế hoạch B
                                         vx_url = tiktok_url.replace("tiktok.com", "tnktok.com")
                                         try: await message.edit(suppress=True)
                                         except: pass
                                         await message.reply(content=vx_url)
                             else:
+                                # Nếu API lỗi không lấy được dữ liệu
                                 vx_url = tiktok_url.replace("tiktok.com", "tnktok.com")
                                 try: await message.edit(suppress=True)
                                 except: pass
                                 await message.reply(content=vx_url)
-
-                            try:
-                                await message.remove_reaction("⏳", self.bot.user)
-                                await message.add_reaction("✅")
-                            except: pass
                         else:
                             vx_url = tiktok_url.replace("tiktok.com", "tnktok.com")
                             try: await message.edit(suppress=True)
                             except: pass
                             await message.reply(content=vx_url)
-                            try: await message.remove_reaction("⏳", self.bot.user)
-                            except: pass
+
+                    try:
+                        await message.remove_reaction("⏳", self.bot.user)
+                        await message.add_reaction("✅")
+                    except: pass
 
                 except Exception as e:
-                    print(f"Lỗi hệ thống đồng bộ TikTok: {e}")
+                    print(f"Lỗi API TikWM: {e}")
                     vx_url = tiktok_url.replace("tiktok.com", "tnktok.com")
                     try:
                         await message.edit(suppress=True)
