@@ -46,7 +46,7 @@ class AIChat(commands.Cog):
             # Gửi yêu cầu đến Groq (dùng model Llama 3 8B cực nhanh)
             chat_completion = self.client.chat.completions.create(
                 messages=self.chat_histories[user_id],
-                model="llama3-8b-8192",
+                model="llama-3.3-70b-versatile",
             )
             
             reply_text = chat_completion.choices[0].message.content
