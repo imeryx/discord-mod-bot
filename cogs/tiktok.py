@@ -8,8 +8,7 @@ class TikTokDownloader(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         # Regex thông minh nhận diện mọi loại cấu trúc đường dẫn TikTok
-        self.tiktok_pattern = re.compile(r'https?://(?:www\.)?(?:vm\.tiktok\.com|vt\.tiktok\.com|tiktok\.com/[^?\s]+)')
-
+        self.tiktok_pattern = re.compile(r'https?://(?:www\.)?(?:vm\.tiktok\.com|vt\.tiktok\.com|tiktok\.com)/[^?\s]+')
     @commands.Cog.listener()
     async def on_ready(self):
         print("-> Cog [TikTok] Động cơ Hybrid Cobalt & tnktok.com đã kích hoạt hoàn hảo!")
