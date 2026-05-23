@@ -61,6 +61,60 @@ class AutoMod(commands.Cog):
         # Nối các từ lại bằng dấu phẩy
         word_list = ", ".join([f"`{w}`" for w in words])
         await interaction.response.send_message(f"📜 **Danh sách từ cấm:**\n{word_list}", ephemeral=True)
+        
+        # ================= THIẾT LẬP NATIVE AUTOMOD ĐỂ NHẬN BADGE =================
+    @app_commands.command(name="automod_setup", description="Tự động cài đặt lớp khiên AutoMod chính chủ của Discord (Săn Badge)")
+    @app_commands.default_permissions(administrator=True) # Chỉ Admin mới dùng được
+    async def automod_setup(self, interaction: discord.Interaction):
+        # Trì hoãn phản hồi để bot có thời gian gọi API của Discord tạo Rule
+        await interaction.response.defer(ephemeral=True)
+        guild = interaction.guild
+        
+        try:
+            # Quy tắc 1: Sử dụng bộ lọc ngôn từ có sẵn của Discord (Chặn tục tĩu, xúc phạm)
+            await guild.create_automod_rule(
+                name="🛡️ Elfaria - Lọc ngôn từ độc hại",
+                event_type=discord.AutoModRuleEventType.message_send,
+                trigger_type=discord.AutoModRuleTriggerType.keyword_preset,
+                trigger_metadata=discord.AutoModTriggerMetadata(
+                    presets=[
+                        discord.AutoModRuleKeywordPresetType.profanity,
+                        discord.AutoModRuleKeywordPresetType.sexual_content,
+                        discord.AutoModRuleKeywordPresetType.slurs
+                    ]
+                ),
+                actions=[discord.AutoModRuleAction(type=discord.AutoModRuleActionType.block_message)],
+                enabled=True
+            )
+
+            # Quy tắc 2: Tự động chặn tin nhắn bị nghi ngờ là Spam
+            await guild.create_automod_rule(
+                name="🛡️ Elfaria - Chống Spam",
+                event_type=discord.AutoModRuleEventType.message_send,
+                trigger_type=discord.AutoModRuleTriggerType.spam,
+                actions=[discord.AutoModRuleAction(type=discord.AutoModRuleActionType.block_message)],
+                enabled=True
+            )
+
+            # Quy tắc 3: Chặn các liên kết lừa đảo/Phishing đã bị Discord đưa vào danh sách đen
+            await guild.create_automod_rule(
+                name="🛡️ Elfaria - Chống Link Độc",
+                event_type=discord.AutoModRuleEventType.message_send,
+                trigger_type=discord.AutoModRuleTriggerType.harmful_link,
+                actions=[discord.AutoModRuleAction(type=discord.AutoModRuleActionType.block_message)],
+                enabled=True
+            )
+            
+            await interaction.followup.send("✅ Đã thiết lập thành công 3 quy tắc lớp khiên thép AutoMod chính thức cho Server này!")
+            
+        except discord.Forbidden:
+            await interaction.followup.send("❌ Bot không có đủ quyền `Quản lý Server` (Manage Server) để tạo bộ lọc.")
+        except discord.HTTPException as e:
+            # Lỗi 50035 thường là do Server đã có sẵn một quy tắc AutoMod bị trùng lặp
+            if e.code == 50035:
+                await interaction.followup.send("⚠️ Server này đã có sẵn một số quy tắc AutoMod rồi, hãy kiểm tra lại nhé!")
+            else:
+                await interaction.followup.send(f"❌ Có lỗi mạng xảy ra từ phía Discord: {e}")
 
     # ================= BỘ LỌC TIN NHẮN TỰ ĐỘNG =================
     @commands.Cog.listener()

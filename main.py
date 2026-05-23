@@ -8,18 +8,14 @@ import database
 load_dotenv()
 TOKEN = os.getenv('DISCORD_TOKEN')
 
-# ĐIỀN ID SERVER TEST CỦA BẠN VÀO ĐÂY ĐỂ DỌN LỆNH LẶP
-TEST_GUILD_ID = 1056226442146492506 
 # Hàm tự động tìm prefix tương ứng với server
 def get_server_prefix(bot, message):
-    # Nếu nhắn tin riêng DM cho bot thì dùng dấu !
     if not message.guild:
         return "!"
-    # Lấy prefix từ database ra
     return database.get_prefix(message.guild.id)
+
 class BotEnigma(commands.Bot):
     def __init__(self):
-        # Thiết lập prefix và intents
         super().__init__(
             command_prefix=get_server_prefix, 
             intents=discord.Intents.all(),
@@ -37,24 +33,11 @@ class BotEnigma(commands.Bot):
             if filename.endswith('.py'):
                 try:
                     await self.load_extension(f'cogs.{filename[:-3]}')
+                    print(f'-> Đã tải module: {filename}')
                 except Exception as e:
                     print(f'Lỗi khi load module {filename}: {e}')
                     
-        # ================= DỌN DẸP LỆNH & ĐỒNG BỘ =================
-        try:
-            if TEST_GUILD_ID:
-                test_guild = discord.Object(id=TEST_GUILD_ID)
-                
-                # Xóa sạch bộ lệnh Cục bộ của riêng server test
-                self.tree.clear_commands(guild=test_guild)
-                await self.tree.sync(guild=test_guild)
-                print(f"-> Đã xóa sạch Slash Commands cục bộ tại server test!")
-            
-            # Đồng bộ bộ lệnh mới nhất ra Toàn cầu
-            await self.tree.sync()
-            print("-> Đã đồng bộ Slash Commands toàn cầu (Có thể mất thời gian cập nhật)!")
-        except Exception as e:
-            print(f"Lỗi khi đồng bộ lệnh: {e}")
+        print("-> Cấu hình bot sẵn sàng! (Đã tắt đồng bộ tự động để tránh Rate Limit)")
 
     # Sự kiện khi bot online thành công
     async def on_ready(self):
@@ -68,4 +51,12 @@ class BotEnigma(commands.Bot):
 # Chạy bot
 if __name__ == '__main__':
     bot = BotEnigma()
+    
+    # Tạo một lệnh ẩn bằng prefix để bạn đồng bộ thủ công khi cần
+    @bot.command(name="sync")
+    @commands.is_owner() # Chỉ có bạn (chủ bot) mới dùng được lệnh này
+    async def sync_commands(ctx):
+        await bot.tree.sync()
+        await ctx.send("-> Đã đồng bộ Slash Commands toàn cầu thành công!")
+
     bot.run(TOKEN)
