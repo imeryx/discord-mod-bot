@@ -5,12 +5,11 @@ import re
 class MediaFixer(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        # Regex thông minh để "bắt" link X, Twitter, Instagram, Reddit
         self.pattern = re.compile(r'https?://(?:www\.)?(x\.com|twitter\.com|instagram\.com|reddit\.com)/[^\s]+')
 
     @commands.Cog.listener()
     async def on_ready(self):
-        print("-> Cog [Media Fixer] Đã sẵn sàng (Hỗ trợ X, Instagram, Reddit)!")
+        print("-> Cog [Media Fixer] Đã sẵn sàng (Bản tự động cắt đuôi link rác)!")
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
@@ -20,26 +19,26 @@ class MediaFixer(commands.Cog):
         match = self.pattern.search(message.content)
         if match:
             url = match.group(0)
+            
+            # Vũ khí 1: Cắt bỏ toàn bộ phần mã theo dõi (tracking) từ dấu '?' trở đi
+            clean_url = url.split("?")[0]
             domain = match.group(1)
-            fixed_url = url
+            fixed_url = clean_url
 
             # ================= BỘ CHUYỂN ĐỔI LINK =================
             if domain in ["x.com", "twitter.com"]:
-                # Đổi X/Twitter sang fxtwitter để hiện video/ảnh
-                fixed_url = url.replace("x.com", "fxtwitter.com").replace("twitter.com", "fxtwitter.com")
+                fixed_url = clean_url.replace("x.com", "fxtwitter.com").replace("twitter.com", "fxtwitter.com")
             
             elif domain == "instagram.com":
-                # Đổi Instagram sang ddinstagram để hiện Reels/Post
-                fixed_url = url.replace("instagram.com", "ddinstagram.com")
+                # Vũ khí 2: Sử dụng zzinstagram (tự động định tuyến máy chủ mượt nhất)
+                fixed_url = clean_url.replace("instagram.com", "zzinstagram.com")
             
             elif domain == "reddit.com":
-                # Đổi Reddit sang rxddit để phát thẳng video không bị lỗi audio
-                fixed_url = url.replace("reddit.com", "rxddit.com")
+                fixed_url = clean_url.replace("reddit.com", "rxddit.com")
 
-            # Nếu link có sự thay đổi, tiến hành gửi lại lên Discord
             if fixed_url != url:
                 try: 
-                    await message.edit(suppress=True) # Ẩn cái link lỗi mặc định của Discord
+                    await message.edit(suppress=True)
                 except: 
                     pass
                 
