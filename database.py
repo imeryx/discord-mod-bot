@@ -26,6 +26,7 @@ def setup_db():
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     ''')
+    
     # Bảng 3: Lưu danh sách từ cấm của từng Server
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS WordFilters (
@@ -34,6 +35,7 @@ def setup_db():
             UNIQUE(guild_id, word) 
         )
     ''')
+    
     # Bảng 4: Lưu Prefix tùy chỉnh của từng server
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS GuildPrefixes (
@@ -42,9 +44,23 @@ def setup_db():
         )
     ''')
 
+    # Bảng 5 (MỚI THÊM): Lưu cấu hình hệ thống Chào đón / Tạm biệt (Welcome & Goodbye)
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS welcome_settings (
+            guild_id INTEGER PRIMARY KEY,
+            channel_id INTEGER,
+            welcome_msg TEXT,
+            welcome_image TEXT,
+            goodbye_msg TEXT,
+            goodbye_image TEXT
+        )
+    ''')
+
     conn.commit()
     conn.close()
     print("-> Đã kiểm tra và khởi tạo Database thành công!")
+
+# ================= CÁC HÀM XỬ LÝ CẢNH BÁO (WARNINGS) =================
 def add_warning(guild_id, user_id, moderator_id, reason):
     conn = sqlite3.connect('bot_database.db')
     cursor = conn.cursor()
@@ -65,50 +81,52 @@ def add_warning(guild_id, user_id, moderator_id, reason):
     
     conn.commit()
     conn.close()
-    
-    # Trả về con số đếm được để Bot xử lý logic phạt
     return warn_count
 
 def get_warnings(guild_id, user_id):
     conn = sqlite3.connect('bot_database.db')
     cursor = conn.cursor()
-    
-    # Truy vấn lấy ID người phạt, lý do và thời gian
     cursor.execute('''
         SELECT warning_id, moderator_id, reason, timestamp 
         FROM Warnings 
         WHERE guild_id = ? AND user_id = ?
         ORDER BY timestamp DESC
     ''', (guild_id, user_id))
-    
-    # fetchall() sẽ trả về một danh sách (list) chứa các kết quả
     records = cursor.fetchall() 
     conn.close()
-    
     return records
 
 def clear_warnings(guild_id, user_id):
     conn = sqlite3.connect('bot_database.db')
     cursor = conn.cursor()
-    
     cursor.execute('''
         DELETE FROM Warnings 
         WHERE guild_id = ? AND user_id = ?
     ''', (guild_id, user_id))
-    
     conn.commit()
     conn.close()
-# Lấy danh sách từ cấm của một server
+
+def remove_specific_warning(guild_id, warning_id):
+    conn = sqlite3.connect('bot_database.db')
+    cursor = conn.cursor()
+    cursor.execute('''
+        DELETE FROM Warnings 
+        WHERE guild_id = ? AND warning_id = ?
+    ''', (guild_id, warning_id))
+    rows_deleted = cursor.rowcount
+    conn.commit()
+    conn.close()
+    return rows_deleted > 0
+
+# ================= CÁC HÀM XỬ LÝ TỪ CẤM (AUTOMOD) =================
 def get_badwords(guild_id):
     conn = sqlite3.connect('bot_database.db')
     cursor = conn.cursor()
     cursor.execute('SELECT word FROM WordFilters WHERE guild_id = ?', (guild_id,))
-    # Trả về một danh sách (list) các từ, thay vì list các tuple
     words = [row[0] for row in cursor.fetchall()]
     conn.close()
     return words
 
-# Thêm từ cấm mới
 def add_badword(guild_id, word):
     try:
         conn = sqlite3.connect('bot_database.db')
@@ -118,9 +136,8 @@ def add_badword(guild_id, word):
         conn.close()
         return True
     except sqlite3.IntegrityError:
-        return False # Trả về False nếu từ này đã tồn tại trong database của server đó
+        return False
 
-# Xóa từ cấm
 def remove_badword(guild_id, word):
     conn = sqlite3.connect('bot_database.db')
     cursor = conn.cursor()
@@ -129,72 +146,75 @@ def remove_badword(guild_id, word):
     conn.commit()
     conn.close()
     return rows_deleted > 0
-# ================= CÁC HÀM CẤU HÌNH (CONFIG) =================
 
+# ================= CÁC HÀM CẤU HÌNH (CONFIG) =================
 def set_log_channel(guild_id, channel_id):
     conn = sqlite3.connect('bot_database.db')
     cursor = conn.cursor()
-    
-    # Insert dữ liệu mới, nếu guild_id đã tồn tại thì Update cột mod_log_channel_id
     cursor.execute('''
         INSERT INTO GuildSettings (guild_id, mod_log_channel_id)
         VALUES (?, ?)
         ON CONFLICT(guild_id) DO UPDATE SET mod_log_channel_id = ?
     ''', (guild_id, channel_id, channel_id))
-    
     conn.commit()
     conn.close()
 
 def get_log_channel(guild_id):
     conn = sqlite3.connect('bot_database.db')
     cursor = conn.cursor()
-    
     cursor.execute('SELECT mod_log_channel_id FROM GuildSettings WHERE guild_id = ?', (guild_id,))
     result = cursor.fetchone()
-    
     conn.close()
-    
-    # Nếu có kết quả thì trả về ID (nằm ở vị trí đầu tiên của tuple), nếu không thì trả về None
     return result[0] if result else None
-# Thêm vào cuối file database.py
-def remove_specific_warning(guild_id, warning_id):
-    conn = sqlite3.connect('bot_database.db')
-    cursor = conn.cursor()
-    
-    # Xóa dựa trên đúng ID của cảnh báo và ID của server
-    cursor.execute('''
-        DELETE FROM Warnings 
-        WHERE guild_id = ? AND warning_id = ?
-    ''', (guild_id, warning_id))
-    
-    rows_deleted = cursor.rowcount
-    conn.commit()
-    conn.close()
-    
-    # Trả về True nếu xóa thành công (có ít nhất 1 dòng bị ảnh hưởng), ngược lại là False
-    return rows_deleted > 0
+
 # ================= CÁC HÀM XỬ LÝ PREFIX =================
 def set_prefix(guild_id, prefix):
     conn = sqlite3.connect('bot_database.db')
     cursor = conn.cursor()
-    
-    # Dùng ON CONFLICT để tự động Update nếu server đã từng set prefix
     cursor.execute('''
         INSERT INTO GuildPrefixes (guild_id, prefix)
         VALUES (?, ?)
         ON CONFLICT(guild_id) DO UPDATE SET prefix = ?
     ''', (guild_id, prefix, prefix))
-    
     conn.commit()
     conn.close()
 
 def get_prefix(guild_id):
     conn = sqlite3.connect('bot_database.db')
     cursor = conn.cursor()
-    
     cursor.execute('SELECT prefix FROM GuildPrefixes WHERE guild_id = ?', (guild_id,))
     result = cursor.fetchone()
-    
     conn.close()
-    # Nếu server chưa cài, mặc định trả về dấu chấm than "!"
     return result[0] if result else "!"
+
+
+# ================= CÁC HÀM CẤU HÌNH WELCOME / GOODBYE =================
+def save_welcome_config(guild_id, channel_id, welcome_msg, welcome_image, goodbye_msg, goodbye_image):
+    conn = sqlite3.connect('bot_database.db')
+    cursor = conn.cursor()
+    cursor.execute('''
+        INSERT OR REPLACE INTO welcome_settings (guild_id, channel_id, welcome_msg, welcome_image, goodbye_msg, goodbye_image)
+        VALUES (?, ?, ?, ?, ?, ?)
+    ''', (guild_id, channel_id, welcome_msg, welcome_image, goodbye_msg, goodbye_image))
+    conn.commit()
+    conn.close()
+
+def get_welcome_config(guild_id):
+    conn = sqlite3.connect('bot_database.db')
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT channel_id, welcome_msg, welcome_image, goodbye_msg, goodbye_image 
+        FROM welcome_settings WHERE guild_id = ?
+    ''', (guild_id,))
+    result = cursor.fetchone()
+    conn.close()
+    
+    if result:
+        return {
+            "channel_id": result[0],
+            "welcome_msg": result[1],
+            "welcome_image": result[2],
+            "goodbye_msg": result[3],
+            "goodbye_image": result[4]
+        }
+    return None
