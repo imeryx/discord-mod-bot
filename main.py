@@ -16,10 +16,18 @@ def get_server_prefix(bot, message):
 
 class BotEnigma(commands.Bot):
     def __init__(self):
+        # Lấy ID chủ sở hữu từ file .env và ép kiểu sang số nguyên (int)
+        owner_id_env = os.getenv("OWNER_ID")
+        owner_ids = set()
+        if owner_id_env:
+            # strip() giúp loại bỏ khoảng trắng thừa nếu vô tình gõ nhầm trong file .env
+            owner_ids.add(int(owner_id_env.strip()))
+
         super().__init__(
             command_prefix=get_server_prefix, 
             intents=discord.Intents.all(),
-            help_command=None
+            help_command=None,
+            owner_ids=owner_ids  # Bơm danh sách ID chủ sở hữu vào hệ thống lõi
         )
 
     # Hàm setup_hook chạy một lần duy nhất trước khi bot kết nối
@@ -52,9 +60,9 @@ class BotEnigma(commands.Bot):
 if __name__ == '__main__':
     bot = BotEnigma()
     
-    # Tạo một lệnh ẩn bằng prefix để bạn đồng bộ thủ công khi cần
+    # Lệnh ẩn đồng bộ Slash Commands
     @bot.command(name="sync")
-    @commands.is_owner() # Chỉ có bạn (chủ bot) mới dùng được lệnh này
+    @commands.is_owner() # Bây giờ lệnh này đã được bảo vệ tuyệt đối
     async def sync_commands(ctx):
         await bot.tree.sync()
         await ctx.send("-> Đã đồng bộ Slash Commands toàn cầu thành công!")
