@@ -188,7 +188,8 @@ class Dashboard(commands.Cog):
 
         module_details = {
             "ai_chat": {"name": "Trợ lý Trí tuệ Nhân tạo (AI)", "desc": "Cho phép bot trả lời tự động bằng ngữ cảnh thông minh khi được tag."},
-            "image_tools": {"name": "Công cụ Xử lý Ảnh", "desc": "Mở khoá lệnh !tachnen để xóa nền ảnh tự động bằng AI."}
+            "image_tools": {"name": "Công cụ Xử lý Ảnh", "desc": "Mở khoá lệnh !tachnen để xóa nền ảnh tự động bằng AI."},
+            "fun_commands": {"name": "Giải trí & Tương tác", "desc": "Kích hoạt lệnh !ship ghép đôi và các trò chơi khác."}
         }
 
         modules_html = ""
