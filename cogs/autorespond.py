@@ -3,6 +3,8 @@ from discord.ext import commands
 from discord import app_commands
 import database
 import os
+import aiohttp
+import io
 
 class AutoRespond(commands.Cog):
     def __init__(self, bot):
@@ -10,7 +12,7 @@ class AutoRespond(commands.Cog):
 
     @commands.Cog.listener()
     async def on_ready(self):
-        print("-> Cog [AutoRespond] Đã sẵn sàng tương tác (Giao diện Mimu-style hoàn hảo)!")
+        print("-> Cog [AutoRespond] Đã sẵn sàng (Upload ảnh trực tiếp từ RAM, không viền!)")
 
     # ================= CÁC LỆNH CẤU HÌNH =================
     @app_commands.command(name="add_response", description="Thêm một câu trả lời tự động cho server")
@@ -18,14 +20,12 @@ class AutoRespond(commands.Cog):
     @app_commands.describe(
         trigger="Từ khóa hoặc câu kích hoạt (Ví dụ: meo meo)",
         response="[Tùy chọn] Câu trả lời bằng chữ của bot",
-        image_url="[Tùy chọn] Link ảnh hoặc GIF hiển thị kèm (http...)"
+        image_url="[Tùy chọn] Link ảnh trực tiếp hoặc GIF (http...)"
     )
     async def add_response(self, interaction: discord.Interaction, trigger: str, response: str = None, image_url: str = None):
-        # Kiểm tra logic: Không thể để trống cả trường chữ lẫn trường ảnh
         if not response and not image_url:
             return await interaction.response.send_message("❌ Bạn phải nhập câu trả lời chữ (`response`) hoặc điền link ảnh (`image_url`)!", ephemeral=True)
         
-        # Lưu vào database
         database.add_autoresponse(interaction.guild.id, trigger, response, image_url)
         
         msg = f"✅ Đã thêm AutoResponse!\n• Khi ai đó gõ: `{trigger}`"
@@ -59,7 +59,6 @@ class AutoRespond(commands.Cog):
         )
         
         for idx, (trig, resp, img) in enumerate(responses, 1):
-            # Xử lý chuỗi hiển thị nếu phản hồi chữ trống (chỉ có ảnh)
             if resp:
                 display_resp = resp if len(resp) <= 60 else resp[:57] + "..."
             else:
@@ -98,33 +97,32 @@ class AutoRespond(commands.Cog):
             if content_lower == trigger:
                 try:
                     kwargs = {}
-                    message_content = response if response else ""
+                    if response:
+                        kwargs['content'] = response
                     
                     if image_url:
-                        # 1. Nếu là Link mạng -> Áp dụng mẹo Ký tự tàng hình giống Mimu bot
                         if image_url.startswith("http"):
-                            # Ký tự \u200B giúp ẩn hoàn toàn text của đường dẫn link URL
-                            invisible_link = f"[\u200B]({image_url})"
-                            if message_content:
-                                kwargs['content'] = f"{message_content}\n{invisible_link}"
-                            else:
-                                kwargs['content'] = invisible_link
+                            # Tuyệt chiêu: Tải ảnh từ URL vào RAM và gửi như 1 file đính kèm thật
+                            async with aiohttp.ClientSession() as session:
+                                async with session.get(image_url) as resp:
+                                    if resp.status == 200:
+                                        # Kiem tra xem link co phai la file anh thuc su khong
+                                        content_type = resp.headers.get('Content-Type', '')
+                                        if 'image' in content_type or 'video' in content_type:
+                                            img_bytes = await resp.read()
+                                            ext = content_type.split('/')[-1] # lay duoi png, gif, jpeg
+                                            # Gắn vào payload như 1 file bình thường
+                                            kwargs['file'] = discord.File(io.BytesIO(img_bytes), filename=f"image.{ext}")
+                                        else:
+                                            # Neu link khong phai anh (vd: link tenor.com/xxx), tra ve text de Discord tu render
+                                            kwargs['content'] = f"{kwargs.get('content', '')}\n{image_url}".strip()
                         
-                        # 2. Tương thích ngược: Nếu hệ thống cũ lưu file ảnh cục bộ trên ổ cứng VPS
                         elif os.path.exists(image_url):
+                            # Tương thích với các file cũ đang nằm ở thư mục saved_images trên VPS
                             filename = os.path.basename(image_url)
                             kwargs['file'] = discord.File(image_url, filename=filename)
-                            # File cục bộ buộc phải dùng Embed tiệp màu để ẩn chữ tên file đính kèm
-                            embed = discord.Embed(color=0x2B2D31)
-                            embed.set_image(url=f"attachment://{filename}")
-                            kwargs['embed'] = embed
-                            if message_content:
-                                kwargs['content'] = message_content
-                                
-                    elif message_content:
-                        kwargs['content'] = message_content
 
-                    # Tiến hành gửi gói tin dữ liệu linh hoạt
+                    # Gửi tin nhắn ra chat
                     if kwargs:
                         await message.channel.send(**kwargs)
                             
@@ -132,6 +130,6 @@ class AutoRespond(commands.Cog):
                     print(f"Lỗi gửi AutoRespond: {e}")
                 
                 break 
-                
+
 async def setup(bot):
     await bot.add_cog(AutoRespond(bot))
