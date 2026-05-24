@@ -1,12 +1,13 @@
 import discord
 from discord.ext import commands
 import random
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageOps
 import io
 import os
 import urllib.request
 import json
-import requests 
+import requests
+import math
 
 # Hàm kiểm tra trạng thái bật/tắt từ Web Dashboard
 def is_module_enabled(guild_id, module_name):
@@ -19,10 +20,30 @@ def is_module_enabled(guild_id, module_name):
         pass
     return True
 
+# Hàm Toán học: Sinh ra các tọa độ đỉnh để vẽ hình trái tim hoàn hảo
+def get_heart_polygon(x_center, y_center, scale):
+    points = []
+    for t in range(0, 360, 1): # Lấy 360 điểm để đường viền mượt nhất
+        rad = math.radians(t)
+        x = 16 * math.sin(rad)**3
+        y = 13 * math.cos(rad) - 5 * math.cos(2*rad) - 2 * math.cos(3*rad) - math.cos(4*rad)
+        points.append((x * scale, -y * scale)) # Trục Y của ảnh đi xuống nên phải đảo ngược
+    
+    # Căn giữa hoàn hảo đa giác trái tim vào đúng (x_center, y_center)
+    min_x = min(p[0] for p in points)
+    max_x = max(p[0] for p in points)
+    min_y = min(p[1] for p in points)
+    max_y = max(p[1] for p in points)
+    
+    cx = (min_x + max_x) / 2
+    cy = (min_y + max_y) / 2
+    
+    return [(p[0] - cx + x_center, p[1] - cy + y_center) for p in points]
+
+
 class FunCommands(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        # Tự động tải Font chữ Arial nếu VPS chưa có để vẽ % lên ảnh
         self.font_path = "arial.ttf"
         if not os.path.exists(self.font_path):
             try:
@@ -30,101 +51,119 @@ class FunCommands(commands.Cog):
             except Exception as e:
                 print(f"Không thể tải font: {e}")
 
-        # Danh sách URL ảnh anime nền đẹp (Unsplash, size 700x300)
+        # Danh sách URL ảnh anime nền chất lượng cao
         self.anime_backgrounds = [
             "https://images.unsplash.com/photo-1581833971358-2c8b550f87b3?q=80&w=700&h=300&auto=format&fit=crop",
             "https://images.unsplash.com/photo-1543160897-40b48f6f5773?q=80&w=700&h=300&auto=format&fit=crop",
-            "https://images.unsplash.com/photo-1605370824036-7c0b05b45c22?q=80&w=700&h=300&auto=format&fit=crop"
+            "https://images.unsplash.com/photo-1605370824036-7c0b05b45c22?q=80&w=700&h=300&auto=format&fit=crop",
+            "https://images.unsplash.com/photo-1578632767115-351597cf2477?q=80&w=700&h=300&auto=format&fit=crop"
         ]
 
     def create_ship_image(self, avatar1_bytes, avatar2_bytes, percentage):
-        """Hàm xử lý đồ họa: Cắt ảnh tròn, trái tim trong suốt, nền anime ngẫu nhiên"""
-        # 1. Tải ảnh nền anime ngẫu nhiên
+        """Hàm xử lý đồ họa nâng cao: Nền Anime Xuyên thấu"""
+        
+        # 1. Tải và xử lý Ảnh Nền Anime gốc (Sáng)
         bg_url = random.choice(self.anime_backgrounds)
         bg_response = requests.get(bg_url)
-        bg_img = Image.open(io.BytesIO(bg_response.content)).convert("RGBA")
+        base_bg = Image.open(io.BytesIO(bg_response.content)).convert("RGBA")
+        
+        # Crop cho chuẩn kích thước 700x300 để không bị méo ảnh
+        try:
+            resample_filter = Image.Resampling.LANCZOS
+        except AttributeError:
+            resample_filter = Image.LANCZOS # Hỗ trợ Pillow bản cũ
+        base_bg = ImageOps.fit(base_bg, (700, 300), resample_filter)
 
-        # 2. Xử lý avatar (cắt tròn)
+        # 2. Tạo một phiên bản Nền Tối (Lớp làm mờ đi background)
+        dark_bg = base_bg.copy()
+        black_overlay = Image.new('RGBA', (700, 300), (0, 0, 0, 160)) # Mức độ tối: 160/255
+        dark_bg.alpha_composite(black_overlay)
+
+        # 3. Cắt mặt nạ Trái tim (Vùng trắng sẽ hiện ảnh sáng, vùng đen hiện ảnh tối)
+        mask = Image.new('L', (700, 300), 0)
+        draw_mask = ImageDraw.Draw(mask)
+        # Sử dụng hàm toán học để vẽ trái tim size 6 (khoảng 190x130px) ngay giữa ảnh
+        heart_poly = get_heart_polygon(350, 150, 6)
+        draw_mask.polygon(heart_poly, fill=255)
+
+        # 4. Gộp ảnh lại: Bên trong tim là sáng, bên ngoài là tối
+        final_bg = Image.composite(base_bg, dark_bg, mask)
+
+        # 5. Xử lý Avatar Cắt tròn
         img1 = Image.open(io.BytesIO(avatar1_bytes)).convert("RGBA").resize((200, 200))
         img2 = Image.open(io.BytesIO(avatar2_bytes)).convert("RGBA").resize((200, 200))
 
-        # Tạo mặt nạ hình tròn để cắt
         mask_circle = Image.new('L', (200, 200), 0)
         draw_circle = ImageDraw.Draw(mask_circle)
         draw_circle.ellipse((0, 0, 200, 200), fill=255)
 
-        # 3. Tạo lớp phủ đen trong suốt
-        overlay = Image.new('RGBA', (700, 300), (43, 45, 49, 255))
+        # Vẽ viền trắng bọc quanh Avatar cho đẹp
+        draw_final = ImageDraw.Draw(final_bg)
+        border = 4
+        draw_final.ellipse((50-border, 50-border, 250+border, 250+border), fill="white")
+        draw_final.ellipse((450-border, 50-border, 650+border, 250+border), fill="white")
 
-        # 4. Cắt hình trái tim trong suốt ở giữa lớp phủ
-        heart_mask_size = (160, 160)
-        mask_heart = Image.new('L', heart_mask_size, 0)
-        draw_heart = ImageDraw.Draw(mask_heart)
-        # Vẽ trái tim tương đối khớp với vùng 160x160
-        draw_heart.rectangle(((40, 40), (120, 120)), fill=255)
-        draw_heart.ellipse(((0, 40), (80, 120)), fill=255)
-        draw_heart.ellipse(((40, 0), (120, 80)), fill=255)
+        # Dán Avatar lên nền
+        final_bg.paste(img1, (50, 50), mask_circle)
+        final_bg.paste(img2, (450, 50), mask_circle)
 
-        # Căn chỉnh vị trí mặt nạ trái tim (350 - 80, 150 - 80) = (270, 70)
-        overlay.paste((0, 0, 0, 0), (270, 70), mask_heart) # Dán trong suốt với mặt nạ
-
-        # 5. Dán lớp phủ lên ảnh nền anime
-        bg_img.paste(overlay, (0, 0), overlay)
-
-        # 6. Dán 2 avatar cắt tròn lên lớp phủ ở 2 bên
-        bg_img.paste(img1, (50, 50), mask_circle)
-        bg_img.paste(img2, (450, 50), mask_circle)
-
-        # 7. Viết số % vào giữa
-        draw_text = ImageDraw.Draw(bg_img)
-
+        # 6. Chèn chữ % vào giữa trái tim
         try:
-            font = ImageFont.truetype(self.font_path, 60)
+            font = ImageFont.truetype(self.font_path, 65)
         except:
             font = ImageFont.load_default()
         
-        # Căn giữa text %
         text = f"{percentage}%"
-        bbox = draw_text.textbbox((0, 0), text, font=font)
+        bbox = draw_final.textbbox((0, 0), text, font=font)
         text_width = bbox[2] - bbox[0]
         text_height = bbox[3] - bbox[1]
         text_x = 350 - (text_width / 2)
         text_y = 150 - (text_height / 2) - 10 
 
-        draw_text.text((text_x, text_y), text, font=font, fill=(255, 255, 255, 255))
+        # Viết chữ trắng có viền đen xung quanh để dễ đọc trên nền sáng
+        draw_final.text((text_x, text_y), text, font=font, fill="white", stroke_width=2, stroke_fill="black")
 
-        # Xuất ảnh PNG
         buffer = io.BytesIO()
-        bg_img.save(buffer, format="PNG")
+        final_bg.save(buffer, format="PNG")
         buffer.seek(0)
         return buffer
 
-    # Giới hạn mỗi người dùng 1 lần / 10 giây
+    # Cập nhật thuật toán nhận diện 2 User để không bị lỗi "Tự yêu bản thân"
     @commands.command(name="ship")
     @commands.cooldown(1, 10, commands.BucketType.user)
-    async def ship(self, ctx, user: discord.Member = None):
+    async def ship(self, ctx, member1: discord.Member = None, member2: discord.Member = None):
         if ctx.guild and not is_module_enabled(ctx.guild.id, "fun_commands"):
             return
 
-        user1 = ctx.author
-        user2 = user if user else random.choice([m for m in ctx.guild.members if not m.bot and m != user1])
+        # Thuật toán phân luồng ai bị ship với ai
+        if member1 and member2:
+            # Gõ: !ship @A @B -> Ship A với B
+            user1 = member1
+            user2 = member2
+        elif member1:
+            # Gõ: !ship @A -> Ship bản thân với A
+            user1 = ctx.author
+            user2 = member1
+        else:
+            # Gõ: !ship -> Lấy random 1 người trong server ship với bản thân
+            user1 = ctx.author
+            valid_members = [m for m in ctx.guild.members if not m.bot and m != user1]
+            user2 = random.choice(valid_members) if valid_members else user1
 
+        # Chặn nếu tự ship mình với mình (Gõ: !ship @Eryx @Eryx)
         if user1 == user2:
             ctx.command.reset_cooldown(ctx)
-            await ctx.send("Self-love is great, but this command is for shipping with someone else! 😅")
+            await ctx.send("Self-love is great, but try tagging someone else! 😅")
             return
 
         processing_msg = await ctx.send("💖 Calculating the alignment of the stars...")
 
-        # 1. Quay xổ số ngẫu nhiên
         percentage = random.randint(0, 100)
 
-        # 2. Tạo tên ghép
         name1 = user1.display_name
         name2 = user2.display_name
         ship_name = name1[:len(name1)//2] + name2[len(name2)//2:]
 
-        # 3. Câu chúc Tiếng Anh
         if percentage >= 90:
             quote = "A match made in heaven! You two are meant to be. 🥰"
         elif percentage >= 70:
@@ -136,7 +175,6 @@ class FunCommands(commands.Cog):
         else:
             quote = "Water and oil... It's probably best to just stay friends. 💔"
 
-        # 4. Lấy avatar và xử lý
         try:
             av1_bytes = await user1.display_avatar.replace(size=256, format="png").read()
             av2_bytes = await user2.display_avatar.replace(size=256, format="png").read()
@@ -144,7 +182,6 @@ class FunCommands(commands.Cog):
             image_buffer = self.create_ship_image(av1_bytes, av2_bytes, percentage)
             file = discord.File(image_buffer, filename="ship.png")
 
-            # 5. Đóng gói Embed (Đã đổi toàn bộ sang Tiếng Anh)
             embed = discord.Embed(title=f"The name of the ship is {ship_name.capitalize()}! 💞", description=quote, color=0xED4245)
             embed.add_field(name="Compatibility", value=f"**{percentage}%**", inline=False)
             embed.set_image(url="attachment://ship.png")
@@ -155,7 +192,6 @@ class FunCommands(commands.Cog):
             await processing_msg.edit(content="⚠️ An error occurred while fetching avatars. Please try again later.")
             print(f"Lỗi lệnh ship: {e}")
 
-    # Bắt lỗi khi chưa hết thời gian hồi chiêu
     @ship.error
     async def ship_error(self, ctx, error):
         if isinstance(error, commands.CommandOnCooldown):
