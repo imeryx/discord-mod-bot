@@ -60,19 +60,31 @@ class FunCommands(commands.Cog):
         ]
 
     def create_ship_image(self, avatar1_bytes, avatar2_bytes, percentage):
-        """Hàm xử lý đồ họa nâng cao: Nền Anime Xuyên thấu"""
+        """Hàm xử lý đồ họa nâng cao: Nền Anime Xuyên thấu có Fallback"""
         
-        # 1. Tải và xử lý Ảnh Nền Anime gốc (Sáng)
+        # 1. Tải và xử lý Ảnh Nền Anime gốc (Sáng) với chứng minh thư giả (User-Agent)
         bg_url = random.choice(self.anime_backgrounds)
-        bg_response = requests.get(bg_url)
-        base_bg = Image.open(io.BytesIO(bg_response.content)).convert("RGBA")
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36'
+        }
         
-        # Crop cho chuẩn kích thước 700x300 để không bị méo ảnh
         try:
-            resample_filter = Image.Resampling.LANCZOS
-        except AttributeError:
-            resample_filter = Image.LANCZOS # Hỗ trợ Pillow bản cũ
-        base_bg = ImageOps.fit(base_bg, (700, 300), resample_filter)
+            # Thêm timeout 5s để không bị treo bot nếu mạng lag
+            bg_response = requests.get(bg_url, headers=headers, timeout=5)
+            bg_response.raise_for_status() 
+            base_bg = Image.open(io.BytesIO(bg_response.content)).convert("RGBA")
+            
+            # Crop cho chuẩn kích thước 700x300 để không bị méo ảnh
+            try:
+                resample_filter = Image.Resampling.LANCZOS
+            except AttributeError:
+                resample_filter = Image.LANCZOS
+            base_bg = ImageOps.fit(base_bg, (700, 300), resample_filter)
+            
+        except Exception as e:
+            print(f"Không tải được nền anime, dùng nền dự phòng. Lỗi: {e}")
+            # CƠ CHẾ DỰ PHÒNG: Nếu lỗi mạng, dùng nền màu xám đen
+            base_bg = Image.new('RGBA', (700, 300), (43, 45, 49, 255))
 
         # 2. Tạo một phiên bản Nền Tối (Lớp làm mờ đi background)
         dark_bg = base_bg.copy()
@@ -82,7 +94,6 @@ class FunCommands(commands.Cog):
         # 3. Cắt mặt nạ Trái tim (Vùng trắng sẽ hiện ảnh sáng, vùng đen hiện ảnh tối)
         mask = Image.new('L', (700, 300), 0)
         draw_mask = ImageDraw.Draw(mask)
-        # Sử dụng hàm toán học để vẽ trái tim size 6 (khoảng 190x130px) ngay giữa ảnh
         heart_poly = get_heart_polygon(350, 150, 6)
         draw_mask.polygon(heart_poly, fill=255)
 
@@ -128,7 +139,7 @@ class FunCommands(commands.Cog):
         buffer.seek(0)
         return buffer
 
-    # Cập nhật thuật toán nhận diện 2 User để không bị lỗi "Tự yêu bản thân"
+
     @commands.command(name="ship")
     @commands.cooldown(1, 10, commands.BucketType.user)
     async def ship(self, ctx, member1: discord.Member = None, member2: discord.Member = None):
@@ -137,20 +148,17 @@ class FunCommands(commands.Cog):
 
         # Thuật toán phân luồng ai bị ship với ai
         if member1 and member2:
-            # Gõ: !ship @A @B -> Ship A với B
             user1 = member1
             user2 = member2
         elif member1:
-            # Gõ: !ship @A -> Ship bản thân với A
             user1 = ctx.author
             user2 = member1
         else:
-            # Gõ: !ship -> Lấy random 1 người trong server ship với bản thân
             user1 = ctx.author
             valid_members = [m for m in ctx.guild.members if not m.bot and m != user1]
             user2 = random.choice(valid_members) if valid_members else user1
 
-        # Chặn nếu tự ship mình với mình (Gõ: !ship @Eryx @Eryx)
+        # Chặn nếu tự ship mình với mình
         if user1 == user2:
             ctx.command.reset_cooldown(ctx)
             await ctx.send("Self-love is great, but try tagging someone else! 😅")
@@ -189,7 +197,7 @@ class FunCommands(commands.Cog):
             await processing_msg.delete()
             await ctx.send(content=f"{user1.mention} x {user2.mention}", file=file, embed=embed)
         except Exception as e:
-            await processing_msg.edit(content="⚠️ An error occurred while fetching avatars. Please try again later.")
+            await processing_msg.edit(content="⚠️ An error occurred while fetching avatars or processing the image. Please try again later.")
             print(f"Lỗi lệnh ship: {e}")
 
     @ship.error
