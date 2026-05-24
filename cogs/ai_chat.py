@@ -49,9 +49,16 @@ class AIChat(commands.Cog):
             await message.reply(response.text[:2000])
             
         except Exception as e:
-            print(f"Lỗi AI: {e}")
+            error_msg = str(e)
+            print(f"Lỗi AI: {error_msg}")
             await message.remove_reaction("🧠", self.bot.user)
-            await message.reply("Tôi đang bận xử lý dữ liệu, bạn đợi chút nhé!")
+            
+            # Nếu bắt được lỗi 429 quá tải từ Google
+            if "429" in error_msg or "RESOURCE_EXHAUSTED" in error_msg:
+                await message.reply("⏳ Tốc độ chat đang quá nhanh! Google yêu cầu tôi nghỉ ngơi một chút. Bạn đợi khoảng 1 phút rồi nhắn lại nhé!")
+            else:
+                # Các lỗi mạng khác
+                await message.reply("⚠️ Elfaria đang bị lỗi kết nối tạm thời, bạn thử lại sau nhé!")
 
 async def setup(bot):
     await bot.add_cog(AIChat(bot))
