@@ -10,7 +10,7 @@ class AutoRespond(commands.Cog):
 
     @commands.Cog.listener()
     async def on_ready(self):
-        print("-> Cog [AutoRespond] Đã sẵn sàng tương tác (Hỗ trợ Link Ảnh Tùy Chọn, Không Embed)!")
+        print("-> Cog [AutoRespond] Đã sẵn sàng tương tác (Giao diện Mimu-style hoàn hảo)!")
 
     # ================= CÁC LỆNH CẤU HÌNH =================
     @app_commands.command(name="add_response", description="Thêm một câu trả lời tự động cho server")
@@ -21,9 +21,11 @@ class AutoRespond(commands.Cog):
         image_url="[Tùy chọn] Link ảnh hoặc GIF hiển thị kèm (http...)"
     )
     async def add_response(self, interaction: discord.Interaction, trigger: str, response: str = None, image_url: str = None):
+        # Kiểm tra logic: Không thể để trống cả trường chữ lẫn trường ảnh
         if not response and not image_url:
             return await interaction.response.send_message("❌ Bạn phải nhập câu trả lời chữ (`response`) hoặc điền link ảnh (`image_url`)!", ephemeral=True)
         
+        # Lưu vào database
         database.add_autoresponse(interaction.guild.id, trigger, response, image_url)
         
         msg = f"✅ Đã thêm AutoResponse!\n• Khi ai đó gõ: `{trigger}`"
@@ -57,12 +59,12 @@ class AutoRespond(commands.Cog):
         )
         
         for idx, (trig, resp, img) in enumerate(responses, 1):
+            # Xử lý chuỗi hiển thị nếu phản hồi chữ trống (chỉ có ảnh)
             if resp:
                 display_resp = resp if len(resp) <= 60 else resp[:57] + "..."
             else:
-                display_resp = "*(Will send image)*"
+                display_resp = "*(Chỉ gửi ảnh)*"
             
-            # Gắn thêm icon nếu có ảnh
             img_status = " 📸 *(Có kèm ảnh)*" if img else ""
             
             embed.add_field(
@@ -95,32 +97,41 @@ class AutoRespond(commands.Cog):
         for trigger, response, image_url in responses:
             if content_lower == trigger:
                 try:
-                    # Logic gửi mới: Không sử dụng Embed
-                    file_attachment = None
-                    message_content = response # Bắt đầu với văn bản phản hồi (có thể là None)
+                    kwargs = {}
+                    message_content = response if response else ""
                     
-                    # 1. Cơ chế tương thích ngược (Nếu trước đó có file lưu cục bộ)
-                    if image_url and not image_url.startswith("http") and os.path.exists(image_url):
-                        # Gửi hình ảnh cục bộ dưới dạng discord.File trực tiếp
-                        file_attachment = discord.File(image_url)
-                        # Nếu phản hồi chữ trống, Discord vẫn cho phép gửi chỉ File. 
-                        # Nếu có File, Discord sẽ hiển thị phản hồi chữ phía trên.
+                    if image_url:
+                        # 1. Nếu là Link mạng -> Áp dụng mẹo Ký tự tàng hình giống Mimu bot
+                        if image_url.startswith("http"):
+                            # Ký tự \u200B giúp ẩn hoàn toàn text của đường dẫn link URL
+                            invisible_link = f"[\u200B]({image_url})"
+                            if message_content:
+                                kwargs['content'] = f"{message_content}\n{invisible_link}"
+                            else:
+                                kwargs['content'] = invisible_link
                         
-                    # 2. Xử lý link ảnh URL mới (Không Embed)
-                    elif image_url and image_url.startswith("http"):
-                        # Cộng link ảnh vào nội dung tin nhắn để Discord tự hiển thị ảnh
-                        if message_content:
-                            message_content += "\n" + image_url
-                        else:
-                            message_content = image_url
+                        # 2. Tương thích ngược: Nếu hệ thống cũ lưu file ảnh cục bộ trên ổ cứng VPS
+                        elif os.path.exists(image_url):
+                            filename = os.path.basename(image_url)
+                            kwargs['file'] = discord.File(image_url, filename=filename)
+                            # File cục bộ buộc phải dùng Embed tiệp màu để ẩn chữ tên file đính kèm
+                            embed = discord.Embed(color=0x2B2D31)
+                            embed.set_image(url=f"attachment://{filename}")
+                            kwargs['embed'] = embed
+                            if message_content:
+                                kwargs['content'] = message_content
+                                
+                    elif message_content:
+                        kwargs['content'] = message_content
 
-                    # Tiến hành gửi
-                    await message.channel.send(content=message_content, file=file_attachment)
+                    # Tiến hành gửi gói tin dữ liệu linh hoạt
+                    if kwargs:
+                        await message.channel.send(**kwargs)
                             
                 except Exception as e:
                     print(f"Lỗi gửi AutoRespond: {e}")
                 
                 break 
-
+                
 async def setup(bot):
     await bot.add_cog(AutoRespond(bot))
