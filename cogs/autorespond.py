@@ -3,11 +3,6 @@ from discord.ext import commands
 from discord import app_commands
 import database
 import os
-import uuid
-
-# Tạo thư mục cục bộ để lưu ảnh vĩnh viễn trên VPS nếu chưa có
-if not os.path.exists("./saved_images"):
-    os.makedirs("./saved_images")
 
 class AutoRespond(commands.Cog):
     def __init__(self, bot):
@@ -15,7 +10,7 @@ class AutoRespond(commands.Cog):
 
     @commands.Cog.listener()
     async def on_ready(self):
-        print("-> Cog [AutoRespond] Đã sẵn sàng tương tác (Hỗ trợ Tải file & Giao diện mới)!")
+        print("-> Cog [AutoRespond] Đã sẵn sàng tương tác (Hỗ trợ Link Ảnh Tùy Chọn)!")
 
     # ================= CÁC LỆNH CẤU HÌNH =================
     @app_commands.command(name="add_response", description="Thêm một câu trả lời tự động cho server")
@@ -23,43 +18,28 @@ class AutoRespond(commands.Cog):
     @app_commands.describe(
         trigger="Từ khóa hoặc câu kích hoạt (Ví dụ: meo meo)",
         response="[Tùy chọn] Câu trả lời bằng chữ của bot",
-        image="[Tùy chọn] Tải lên trực tiếp một file ảnh hoặc GIF"
+        image_url="[Tùy chọn] Link ảnh hoặc GIF hiển thị kèm (http...)"
     )
-    # Đặt response và image thành None mặc định để biến chúng thành Tùy chọn (Optional)
-    async def add_response(self, interaction: discord.Interaction, trigger: str, response: str = None, image: discord.Attachment = None):
+    async def add_response(self, interaction: discord.Interaction, trigger: str, response: str = None, image_url: str = None):
         # Kiểm tra logic: Không thể để trống cả 2
-        if not response and not image:
-            return await interaction.response.send_message("❌ Bạn phải nhập câu trả lời chữ (`response`) hoặc tải lên một file (`image`)!", ephemeral=True)
+        if not response and not image_url:
+            return await interaction.response.send_message("❌ Bạn phải nhập câu trả lời chữ (`response`) hoặc điền link ảnh (`image_url`)!", ephemeral=True)
         
-        image_path = None
-        if image:
-            # Kiểm tra định dạng file an toàn
-            if not image.content_type or not image.content_type.startswith('image/'):
-                return await interaction.response.send_message("❌ File tải lên phải là định dạng ảnh hoặc GIF!", ephemeral=True)
-            
-            # Tạo tên file ngẫu nhiên để tránh trùng lặp khi nhiều server cùng tải ảnh
-            ext = image.filename.split('.')[-1]
-            filename = f"{uuid.uuid4().hex}.{ext}"
-            image_path = f"./saved_images/{filename}"
-            
-            # Lưu file trực tiếp xuống ổ cứng VPS
-            await image.save(image_path)
-
-        # Lưu vào database (Lưu đường dẫn ổ cứng thay vì URL mạng)
-        database.add_autoresponse(interaction.guild.id, trigger, response, image_path)
+        # Lưu vào database
+        database.add_autoresponse(interaction.guild.id, trigger, response, image_url)
         
         msg = f"✅ Đã thêm AutoResponse!\n• Khi ai đó gõ: `{trigger}`"
         if response:
             msg += f"\n• Bot sẽ đáp: **{response}**"
-        if image:
-            msg += f"\n• Kèm theo ảnh tải lên: `{image.filename}`"
+        if image_url:
+            msg += f"\n• Kèm theo link ảnh: [Nhấn vào để xem]({image_url})"
             
         await interaction.response.send_message(msg, ephemeral=True)
 
     @app_commands.command(name="remove_response", description="Xóa một câu trả lời tự động")
     @app_commands.default_permissions(manage_guild=True)
     async def remove_response(self, interaction: discord.Interaction, trigger: str):
-        # Tìm xem từ khóa này có chứa file ảnh cục bộ không
+        # Tìm xem từ khóa này có chứa file ảnh cục bộ không (để dọn rác nếu bạn đã tạo ở phiên bản code trước)
         responses = database.get_autoresponses(interaction.guild.id)
         target_image_path = None
         for t, r, img in responses:
@@ -69,13 +49,12 @@ class AutoRespond(commands.Cog):
 
         success = database.remove_autoresponse(interaction.guild.id, trigger)
         if success:
-            # Thu dọn rác: Xóa file ảnh trên VPS để giải phóng dung lượng
-            if target_image_path and os.path.exists(target_image_path):
+            # Xóa file cục bộ nếu có
+            if target_image_path and not target_image_path.startswith("http") and os.path.exists(target_image_path):
                 try:
                     os.remove(target_image_path)
-                except Exception as e:
-                    print(f"Lỗi khi xóa ảnh cục bộ: {e}")
-                    
+                except Exception:
+                    pass
             await interaction.response.send_message(f"🗑️ Đã xóa trả lời tự động cho từ khóa `{trigger}`!", ephemeral=True)
         else:
             await interaction.response.send_message(f"⚠️ Không tìm thấy từ khóa `{trigger}` trong hệ thống.", ephemeral=True)
@@ -100,7 +79,7 @@ class AutoRespond(commands.Cog):
             else:
                 display_resp = "*(Chỉ gửi ảnh)*"
             
-            img_status = " 📸 *(Có file đính kèm)*" if img else ""
+            img_status = " 📸 *(Có kèm ảnh)*" if img else ""
             
             embed.add_field(
                 name=f"{idx}. Từ khóa: `{trig}`",
@@ -129,24 +108,23 @@ class AutoRespond(commands.Cog):
 
         content_lower = message.content.lower().strip()
 
-        for trigger, response, image_path in responses:
+        for trigger, response, image_url in responses:
             if content_lower == trigger:
                 try:
                     file_attachment = None
                     embed = None
                     
-                    # 1. Nếu có lưu ảnh cục bộ trên VPS
-                    if image_path and os.path.exists(image_path):
-                        filename = os.path.basename(image_path)
-                        # Mở file từ VPS và nhúng vào Embed
-                        file_attachment = discord.File(image_path, filename=filename)
+                    # 1. Cơ chế tương thích ngược (Nếu trước đó có file lưu cục bộ)
+                    if image_url and not image_url.startswith("http") and os.path.exists(image_url):
+                        filename = os.path.basename(image_url)
+                        file_attachment = discord.File(image_url, filename=filename)
                         embed = discord.Embed(color=discord.Color.random())
                         embed.set_image(url=f"attachment://{filename}")
                         
-                    # 2. Cơ chế tương thích ngược (nếu database cũ vẫn còn lưu link URL http)
-                    elif image_path and image_path.startswith("http"):
+                    # 2. Xử lý link ảnh URL mới
+                    elif image_url and image_url.startswith("http"):
                         embed = discord.Embed(color=discord.Color.random())
-                        embed.set_image(url=image_path)
+                        embed.set_image(url=image_url)
 
                     # Tiến hành gửi
                     if embed:
