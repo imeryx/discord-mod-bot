@@ -1,30 +1,36 @@
 # cogs/game_data.py
 
-# --- HỆ PHÁI & CHỈ SỐ CƠ BẢN (Base Stats) ---
+# --- HỆ PHÁI & CHỈ SỐ CƠ BẢN (Đã thêm lại Description) ---
 FACTIONS = {
     "Ice": {
         "name": "Ice (El)", "emoji": "🧊", "strong_against": "Fire",
-        "base_hp": 100, "base_mana": 60, "hp_growth": 15, "mana_growth": 8
+        "base_hp": 100, "base_mana": 30, "hp_growth": 15, "mana_growth": 8,
+        "description": "The supreme magic of Magia Vander Elfaria. Massively increases critical strike chance."
     },
     "Fire": {
         "name": "Fire (Ignis)", "emoji": "🔥", "strong_against": "Wind",
-        "base_hp": 85, "base_mana": 50, "hp_growth": 12, "mana_growth": 6
+        "base_hp": 85, "base_mana": 20, "hp_growth": 12, "mana_growth": 6,
+        "description": "The destructive power of the Ignis faction. Increases base damage."
     },
     "Wind": {
         "name": "Wind (Ventus)", "emoji": "🌪️", "strong_against": "Earth",
-        "base_hp": 90, "base_mana": 55, "hp_growth": 14, "mana_growth": 7
+        "base_hp": 90, "base_mana": 25, "hp_growth": 14, "mana_growth": 7,
+        "description": "The speed magic of the spirits. Increases evasion rate."
     },
     "Earth": {
         "name": "Earth (Terra)", "emoji": "🪨", "strong_against": "Lightning",
-        "base_hp": 150, "base_mana": 40, "hp_growth": 25, "mana_growth": 4
+        "base_hp": 150, "base_mana": 20, "hp_growth": 25, "mana_growth": 4,
+        "description": "The absolute defense of the fairy tribe. Increases HP and reduces incoming damage."
     },
     "Lightning": {
         "name": "Lightning (Fulgur)", "emoji": "⚡", "strong_against": "Ice",
-        "base_hp": 80, "base_mana": 70, "hp_growth": 10, "mana_growth": 10
+        "base_hp": 80, "base_mana": 35, "hp_growth": 10, "mana_growth": 10,
+        "description": "Fierce magic with rapid burst damage and armor penetration."
     },
     "Physical": {
         "name": "Physical (Sword)", "emoji": "⚔️", "strong_against": "None", 
-        "base_hp": 120, "base_mana": 0, "hp_growth": 20, "mana_growth": 0 # Vô năng không có Mana
+        "base_hp": 120, "base_mana": 0, "hp_growth": 20, "mana_growth": 0,
+        "description": "No magical power, but possesses ultimate demon-slaying sword skills."
     }
 }
 
@@ -55,10 +61,11 @@ PLAYER_SKILLS = {
         {"id": "sk_chain_lightning", "name": "Chain Lightning", "emoji": "🌩️", "unlock_level": 5, "mana_cost": 35, "dmg_multiplier": 2.4, "desc": "Unleash lightning that strikes vital points."},
         {"id": "sk_thunder_wrath", "name": "Thunder God's Wrath", "emoji": "⛈️", "unlock_level": 15, "mana_cost": 65, "dmg_multiplier": 3.6, "desc": "Call down divine lightning to obliterate foes."}
     ],
+
     "Physical": [
-        {"id": "sk_heavy_strike", "name": "Heavy Strike", "emoji": "⚔️", "unlock_level": 1, "mana_cost": 0, "dmg_multiplier": 1.4, "desc": "A powerful sword slash. (Costs no Mana)"},
-        {"id": "sk_parry", "name": "Parry & Counter", "emoji": "🛡️", "unlock_level": 5, "mana_cost": 0, "dmg_multiplier": 1.0, "desc": "Deflect the attack and counter immediately."},
-        {"id": "sk_wis_strike", "name": "Wistoria Strike", "emoji": "✨", "unlock_level": 15, "mana_cost": 0, "dmg_multiplier": 2.8, "desc": "The ultimate sword skill of the magicless."}
+        {"id": "sk_heavy_strike", "name": "Heavy Strike", "emoji": "⚔️", "unlock_level": 1, "mana_cost": 0, "dmg_multiplier": 1.4, "cooldown": 1, "desc": "A powerful sword slash. (1 Turn Cooldown)"},
+        {"id": "sk_parry", "name": "Parry & Counter", "emoji": "🛡️", "unlock_level": 5, "mana_cost": 0, "dmg_multiplier": 1.0, "cooldown": 2, "desc": "Deflect the attack and counter. (2 Turns Cooldown)"},
+        {"id": "sk_wis_strike", "name": "Wistoria Strike", "emoji": "✨", "unlock_level": 15, "mana_cost": 0, "dmg_multiplier": 2.8, "cooldown": 4, "desc": "The ultimate sword skill. (4 Turns Cooldown)"}
     ]
 }
 
@@ -97,86 +104,86 @@ WEAPONS = {
 MONSTERS = {
     "1-20": [
         {
-            "name": "Mutant Slime", "emoji": "🟢", "hp": 150, "dmg": 10, "credits": 20,
-            "skill_name": "Acid Splash", "skill_dmg_mult": 1.5, "skill_chance": 20,
+            "name": "Mutant Slime", "emoji": "🟢", "hp": 50, "dmg": 5, "credits": 20,
+            "skill_name": "Acid Splash", "skill_dmg_mult": 1.2, "skill_chance": 15,
             "gif": "https://i.pinimg.com/1200x/fc/05/f7/fc05f7ee42456f2b0f15c1ecab66c3a4.jpg" 
         },
         {
-            "name": "Scout Goblin", "emoji": "👺", "hp": 200, "dmg": 15, "credits": 35,
-            "skill_name": "Sneak Attack", "skill_dmg_mult": 2.0, "skill_chance": 25,
+            "name": "Scout Goblin", "emoji": "👺", "hp": 80, "dmg": 10, "credits": 35,
+            "skill_name": "Sneak Attack", "skill_dmg_mult": 1.5, "skill_chance": 20,
             "gif": "https://i.pinimg.com/736x/2e/20/58/2e2058b0474057ebd9b390d4868276a0.jpg"
         },
         {
-            "name": "Demonic Wolf", "emoji": "🐺", "hp": 220, "dmg": 18, "credits": 50,
-            "skill_name": "Feral Bite", "skill_dmg_mult": 1.8, "skill_chance": 30,
+            "name": "Demonic Wolf", "emoji": "🐺", "hp": 120, "dmg": 12, "credits": 50,
+            "skill_name": "Feral Bite", "skill_dmg_mult": 1.5, "skill_chance": 25,
             "gif": "https://i.pinimg.com/736x/1c/1f/d9/1c1fd95239cf77df9b6c53d100dadeb1.jpg"
         },
         {
-            "name": "Giant Spider", "emoji": "🕷️", "hp": 180, "dmg": 20, "credits": 45,
-            "skill_name": "Venom Web", "skill_dmg_mult": 2.2, "skill_chance": 20,
+            "name": "Giant Spider", "emoji": "🕷️", "hp": 90, "dmg": 10, "credits": 45,
+            "skill_name": "Venom Web", "skill_dmg_mult": 1.5, "skill_chance": 20,
             "gif": "https://i.pinimg.com/736x/05/cb/61/05cb61ba7220f99c29c82ff976f88906.jpg"
         },
         {
-            "name": "Living Armor", "emoji": "🤖", "hp": 300, "dmg": 12, "credits": 60,
+            "name": "Living Armor", "emoji": "🤖", "hp": 140, "dmg": 8, "credits": 60,
             "skill_name": "Shield Bash", "skill_dmg_mult": 1.5, "skill_chance": 15,
             "gif": "https://i.pinimg.com/736x/23/29/a7/2329a703aad2a24273ec866d56ae8d60.jpg"
         },
         {
-            "name": "Rogue Mage", "emoji": "🧙", "hp": 120, "dmg": 25, "credits": 55,
-            "skill_name": "Magic Missile", "skill_dmg_mult": 2.5, "skill_chance": 40,
+            "name": "Rogue Mage", "emoji": "🧙", "hp": 90, "dmg": 15, "credits": 55,
+            "skill_name": "Magic Missile", "skill_dmg_mult": 1.8, "skill_chance": 30,
             "gif": "https://i.pinimg.com/736x/d1/0e/64/d10e646926bc2c7c27d013cc86592f50.jpg"
         }
     ],
     "21-50": [
         {
-            "name": "Crystal Golem", "emoji": "🗿", "hp": 800, "dmg": 40, "credits": 120,
+            "name": "Crystal Golem", "emoji": "🗿", "hp": 150, "dmg": 12, "credits": 120,
             "skill_name": "Earthquake", "skill_dmg_mult": 1.8, "skill_chance": 30,
             "gif": "https://i.pinimg.com/736x/a5/39/29/a539298baec30c54350b1646c5a8b8cd.jpg"
         },
         {
-            "name": "Mana-sucking Bat", "emoji": "🦇", "hp": 600, "dmg": 50, "credits": 150,
+            "name": "Mana-sucking Bat", "emoji": "🦇", "hp": 90, "dmg": 18, "credits": 150,
             "skill_name": "Vampiric Drain", "skill_dmg_mult": 2.0, "skill_chance": 35,
             "gif": "https://i.pinimg.com/736x/d6/1b/26/d61b261d214ce33559a73ff7d3f7436f.jpg"
         },
         {
-            "name": "Headless Knight", "emoji": "🛡️", "hp": 1000, "dmg": 60, "credits": 250,
+            "name": "Headless Knight", "emoji": "🛡️", "hp": 130, "dmg": 16, "credits": 250,
             "skill_name": "Decapitate", "skill_dmg_mult": 2.5, "skill_chance": 25,
             "gif": "https://i.pinimg.com/736x/72/54/3a/72543a52bba0ef42a3d53753a1e935dc.jpg"
         },
         {
-            "name": "Fire Salamander", "emoji": "🦎", "hp": 750, "dmg": 70, "credits": 200,
+            "name": "Fire Salamander", "emoji": "🦎", "hp": 110, "dmg": 20, "credits": 200,
             "skill_name": "Flame Breath", "skill_dmg_mult": 2.2, "skill_chance": 30,
             "gif": "https://i.pinimg.com/736x/b8/fb/41/b8fb415501e7ca551ec46d29473c3982.jpg"
         },
         {
-            "name": "Shadow Assassin", "emoji": "🥷", "hp": 650, "dmg": 80, "credits": 280,
+            "name": "Shadow Assassin", "emoji": "🥷", "hp": 80, "dmg": 25, "credits": 280,
             "skill_name": "Fatal Backstab", "skill_dmg_mult": 3.0, "skill_chance": 20,
             "gif": "https://i.pinimg.com/1200x/02/74/f7/0274f7942246e7d73ce4549b01d9bf78.jpg"
         }
     ],
     "51-100": [
         {
-            "name": "Supreme Dark Mage", "emoji": "🧙‍♂️", "hp": 2500, "dmg": 180, "credits": 1000,
+            "name": "Supreme Dark Mage", "emoji": "🧙‍♂️", "hp": 180, "dmg": 35, "credits": 1000,
             "skill_name": "Death Ray", "skill_dmg_mult": 2.5, "skill_chance": 40,
             "gif": "https://i.pinimg.com/736x/3b/c9/7c/3bc97cd91d03d3ce5b65fd5127c40d0a.jpg"
         },
         {
-            "name": "Eternal Ice Dragon", "emoji": "🐉", "hp": 5000, "dmg": 250, "credits": 2500,
+            "name": "Eternal Ice Dragon", "emoji": "🐉", "hp": 300, "dmg": 25, "credits": 2500,
             "skill_name": "Absolute Frost Breath", "skill_dmg_mult": 2.0, "skill_chance": 35,
             "gif": "https://i.pinimg.com/736x/eb/c4/c9/ebc4c95467b106876092a62837df0707.jpg"
         },
         {
-            "name": "Abyssal Behemoth", "emoji": "👹", "hp": 6000, "dmg": 300, "credits": 3500,
+            "name": "Abyssal Behemoth", "emoji": "👹", "hp": 400, "dmg": 20, "credits": 3500,
             "skill_name": "World Shatter", "skill_dmg_mult": 2.2, "skill_chance": 30,
             "gif": "https://i.pinimg.com/1200x/6d/ed/ba/6dedbaa8274d716e1d184c7b06793e45.jpg"
         },
         {
-            "name": "Fallen Vander", "emoji": "👑", "hp": 4500, "dmg": 350, "credits": 4000,
+            "name": "Fallen Vander", "emoji": "👑", "hp": 250, "dmg": 30, "credits": 4000,
             "skill_name": "Forbidden Magic", "skill_dmg_mult": 3.0, "skill_chance": 45,
             "gif": "https://i.pinimg.com/1200x/d6/7f/1d/d67f1d0f15ed438e283482a4945c88b1.jpg"
         },
         {
-            "name": "Void Devourer", "emoji": "👁️", "hp": 8000, "dmg": 400, "credits": 5000,
+            "name": "Void Devourer", "emoji": "👁️", "hp": 350, "dmg": 28, "credits": 5000,
             "skill_name": "Space Collapse", "skill_dmg_mult": 2.8, "skill_chance": 25,
             "gif": "https://i.pinimg.com/736x/96/6e/df/966edf1e7132e1ad38cdf4c66661bfbb.jpg"
         }

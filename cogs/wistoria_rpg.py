@@ -35,7 +35,7 @@ class FactionSelectView(discord.ui.View):
                 title="🎓 Welcome to Rigarden Academy!",
                 description=f"Congratulations **{interaction.user.name}**, you are officially enrolled.\n\n"
                             f"You have awakened the power of: **{faction_info['emoji']} {faction_info['name']}**\n"
-                            f"*{faction_info['description']}*\n\n"
+                            f"*{faction_info.get('description', 'A powerful magic faction.')}*\n\n"
                             f"Newcomer Reward: **✨ 500 Credits**.",
                 color=discord.Color.gold()
             )
@@ -81,19 +81,24 @@ class CombatView(discord.ui.View):
         # Unpack Player Data from Database
         self.level, self.exp, self.credits, self.faction_key, self.floor = player_data
         
-        # Player Stats Calculation
+        # 1. Player Stats Calculation
         faction_data = FACTIONS[self.faction_key]
         self.max_hp = faction_data["base_hp"] + (self.level * faction_data["hp_growth"])
         self.current_hp = self.max_hp
         self.max_mana = faction_data["base_mana"] + (self.level * faction_data["mana_growth"])
         self.current_mana = self.max_mana
         
-        # Monster Stats Setup
-        self.monster_max_hp = monster["hp"]
-        self.monster_hp = monster["hp"]
+        # Tăng sát thương cơ bản của người chơi theo Level (Cộng dồn với vũ khí)
+        equipped_weapon_dmg = WEAPONS["w_rusty_sword"]["dmg"] if self.faction_key == "Physical" else WEAPONS["w_wood_staff"]["dmg"]
+        self.base_dmg = equipped_weapon_dmg + (self.level * 2)
         
-        # Temporary Weapon Setup (Will be fetched from DB later)
-        self.base_dmg = WEAPONS["w_rusty_sword"]["dmg"] if self.faction_key == "Physical" else WEAPONS["w_wood_staff"]["dmg"]
+        # 2. Monster Dynamic Scaling theo số Tầng (Floor)
+        floor_factor = max(0, self.floor - 1)
+        
+        # Tăng 8% HP và 4% Sát thương mỗi tầng so với gốc
+        self.monster_max_hp = int(monster["hp"] * (1 + floor_factor * 0.08))
+        self.monster_hp = self.monster_max_hp
+        self.monster_dmg = int(monster["dmg"] * (1 + floor_factor * 0.04))
         
         self.combat_log = "The battle begins! Prepare yourself.\n"
         
@@ -204,7 +209,7 @@ class CombatView(discord.ui.View):
             return await self.victory(interaction)
 
         # 2. MONSTER TURN (Lượt quái vật)
-        m_base_dmg = self.monster["dmg"]
+        m_base_dmg = self.monster_dmg # Đã sử dụng chỉ số scale
         skill_chance = self.monster.get("skill_chance", 0)
         
         if random.randint(1, 100) <= skill_chance:
@@ -299,7 +304,7 @@ class WistoriaRPG(commands.Cog):
         embed.set_image(url="https://images4.alphacoders.com/136/thumbbig-1368886.webp") 
         await interaction.response.send_message(embed=embed, view=FactionSelectView())
 
-    @app_commands.command(name="profile", description="View your Rigarden Student Profile")
+    @app_commands.command(name="profile", description="View your detailed Rigarden Student Profile & Stats")
     async def profile(self, interaction: discord.Interaction):
         user_id = interaction.user.id
         conn = sqlite3.connect('bot_database.db')
@@ -314,16 +319,55 @@ class WistoriaRPG(commands.Cog):
         level, exp, credits, faction_key, current_floor = player
         faction_info = FACTIONS.get(faction_key, {"name": "Unknown", "emoji": "❓"})
         
+        # --- 1. TÍNH TOÁN THÔNG SỐ CHIẾN ĐẤU ---
+        max_hp = faction_info["base_hp"] + (level * faction_info["hp_growth"])
+        max_mana = faction_info["base_mana"] + (level * faction_info["mana_growth"])
+        
+        # Lấy vũ khí mặc định hiện tại (Sau này sẽ query từ Database Inventory)
+        weapon_key = "w_rusty_sword" if faction_key == "Physical" else "w_wood_staff"
+        equipped_weapon = WEAPONS[weapon_key]
+        total_dmg = equipped_weapon["dmg"] + (level * 3)
+        
+        # --- 2. LẤY DANH SÁCH KỸ NĂNG ---
+        available_skills = [sk for sk in PLAYER_SKILLS.get(faction_key, []) if level >= sk["unlock_level"]]
+        skills_text = ""
+        if available_skills:
+            for sk in available_skills:
+                # Xử lý hiển thị Mana hoặc Cooldown
+                cost_str = f"{sk['mana_cost']}MP" if sk.get("mana_cost", 0) > 0 else "0MP"
+                cd_str = f" | {sk['cooldown']}T CD" if "cooldown" in sk else ""
+                
+                skills_text += f"{sk['emoji']} **{sk['name']}** ({cost_str}{cd_str})\n*↳ {sk['desc']}*\n\n"
+        else:
+            skills_text = "*No skills unlocked yet.*"
+            
+        # --- 3. XÂY DỰNG GIAO DIỆN EMBED ---
         exp_needed = level * 100 
         exp_bar = generate_bar(exp, exp_needed, "🟩")
         
         embed = discord.Embed(title=f"🎓 Student Profile | {interaction.user.display_name}", color=discord.Color.blue())
-        if interaction.user.avatar: embed.set_thumbnail(url=interaction.user.avatar.url)
-        embed.add_field(name="Magic Faction", value=f"{faction_info['emoji']} **{faction_info['name']}**", inline=False)
+        if interaction.user.avatar: 
+            embed.set_thumbnail(url=interaction.user.avatar.url)
+            
+        # Dòng 1: Thông tin cơ bản
+        embed.add_field(name="Magic Faction", value=f"{faction_info['emoji']} **{faction_info['name']}**", inline=True)
         embed.add_field(name="Level", value=f"**Lv. {level}**", inline=True)
         embed.add_field(name="Credits", value=f"✨ **{credits:,}**", inline=True)
+        
+        # Dòng 2: Chỉ số sinh tồn & Sát thương
+        embed.add_field(name="Combat Stats", value=f"💖 **HP:** {max_hp}\n💧 **Mana:** {max_mana}\n⚔️ **Total DMG:** {total_dmg}", inline=True)
+        
+        # Dòng 3: Vũ khí đang dùng
+        embed.add_field(name="Equipped Weapon", value=f"{equipped_weapon['emoji']} **{equipped_weapon['name']}**\n*Tier {equipped_weapon['tier']} | DMG: {equipped_weapon['dmg']}*", inline=True)
+        
+        # Dòng 4: Tiến trình
         embed.add_field(name="Tower Progress", value=f"🏰 **Floor {current_floor}**", inline=True)
+        
+        # Thanh kinh nghiệm
         embed.add_field(name=f"Experience ({exp}/{exp_needed})", value=exp_bar, inline=False)
+        
+        # Danh sách kỹ năng
+        embed.add_field(name="Unlocked Skills", value=skills_text, inline=False)
         
         await interaction.response.send_message(embed=embed)
 
