@@ -69,30 +69,40 @@ PLAYER_SKILLS = {
     ]
 }
 
-# --- KHO VŨ KHÍ (WEAPONS) ---
+# --- KHO VŨ KHÍ (WEAPONS - TỪ HẠNG D ĐẾN SS) ---
 WEAPONS = {
-    # --- TIER B: COMMON (Phổ thông) ---
-    "w_wood_staff": {"name": "Novice Wooden Staff", "emoji": "🪵", "tier": "B", "dmg": 15, "faction": "None"},
-    "w_rusty_sword": {"name": "Rusty Sword", "emoji": "🗡️", "tier": "B", "dmg": 18, "faction": "Physical"},
-    "w_old_grimoire": {"name": "Old Torn Grimoire", "emoji": "📖", "tier": "B", "dmg": 14, "faction": "None"},
+    # --- TIER D: STARTER (Vũ khí khởi đầu - Rất thô sơ) ---
+    "w_broken_branch": {"name": "Broken Branch", "emoji": "🌿", "tier": "D", "dmg": 8, "faction": "None"},
+    "w_dull_blade": {"name": "Dull Blade", "emoji": "🗡️", "tier": "D", "dmg": 10, "faction": "Physical"},
+    "w_cracked_orb": {"name": "Cracked Magic Orb", "emoji": "🔮", "tier": "D", "dmg": 9, "faction": "None"},
+
+    # --- TIER C: COMMON (Thường - Dễ nhặt ở tầng thấp) ---
+    "w_wood_staff": {"name": "Novice Wooden Staff", "emoji": "🪵", "tier": "C", "dmg": 16, "faction": "None"},
+    "w_iron_sword": {"name": "Iron Sword", "emoji": "🤺", "tier": "C", "dmg": 18, "faction": "Physical"},
+    "w_old_grimoire": {"name": "Old Torn Grimoire", "emoji": "📖", "tier": "C", "dmg": 15, "faction": "None"},
     
-    # --- TIER A: RARE (Hiếm) ---
+    # --- TIER B: UNCOMMON (Khá - Sát thương tầm trung) ---
+    "w_apprentice_wand": {"name": "Apprentice Wand", "emoji": "🪄", "tier": "B", "dmg": 28, "faction": "None"},
+    "w_steel_sword": {"name": "Steel Broadsword", "emoji": "⚔️", "tier": "B", "dmg": 32, "faction": "Physical"},
+    "w_elemental_ring": {"name": "Lesser Elemental Ring", "emoji": "💍", "tier": "B", "dmg": 26, "faction": "None"},
+
+    # --- TIER A: RARE (Hiếm - Có nguyên tố) ---
     "w_ice_crystal": {"name": "Frost Crystal Wand", "emoji": "💎", "tier": "A", "dmg": 45, "faction": "Ice"},
     "w_fire_blade": {"name": "Flame Dagger", "emoji": "🔥", "tier": "A", "dmg": 48, "faction": "Fire"},
     "w_gale_bow": {"name": "Gale Bow", "emoji": "🏹", "tier": "A", "dmg": 42, "faction": "Wind"},
     "w_stone_hammer": {"name": "Heavy Stone Hammer", "emoji": "🔨", "tier": "A", "dmg": 50, "faction": "Earth"},
     "w_shock_wand": {"name": "Static Shock Wand", "emoji": "🪄", "tier": "A", "dmg": 46, "faction": "Lightning"},
-    "w_steel_sword": {"name": "Steel Longsword", "emoji": "🤺", "tier": "A", "dmg": 55, "faction": "Physical"},
+    "w_knight_sword": {"name": "Knight's Longsword", "emoji": "🤺", "tier": "A", "dmg": 55, "faction": "Physical"},
     
-    # --- TIER S: EPIC (Sử thi) ---
+    # --- TIER S: EPIC (Sử thi - Sát thương bùng nổ) ---
     "w_glacial_scepter": {"name": "Glacial Scepter", "emoji": "💠", "tier": "S", "dmg": 110, "faction": "Ice"},
     "w_inferno_halberd": {"name": "Inferno Halberd", "emoji": "🔱", "tier": "S", "dmg": 125, "faction": "Fire"},
     "w_tempest_blade": {"name": "Tempest Twin Blades", "emoji": "⚔️", "tier": "S", "dmg": 105, "faction": "Wind"},
     "w_earth_axe": {"name": "Seismic Great Axe", "emoji": "🪓", "tier": "S", "dmg": 130, "faction": "Earth"},
     "w_lightning_reaper": {"name": "Thunder Reaper", "emoji": "⚡", "tier": "S", "dmg": 120, "faction": "Lightning"},
-    "w_knight_greatsword": {"name": "Knight's Greatsword", "emoji": "🗡️", "tier": "S", "dmg": 140, "faction": "Physical"},
+    "w_demon_slayer": {"name": "Demon Slayer Greatsword", "emoji": "🗡️", "tier": "S", "dmg": 140, "faction": "Physical"},
     
-    # --- TIER SS: VANDER / MYTHIC (Thần thoại) ---
+    # --- TIER SS: VANDER / MYTHIC (Thần thoại - Trấn phái) ---
     "w_albis_staff": {"name": "👑 Albis Ice Staff", "emoji": "❄️", "tier": "SS", "dmg": 280, "faction": "Ice"},
     "w_ignis_staff": {"name": "👑 Ignis Supreme Staff", "emoji": "🌋", "tier": "SS", "dmg": 300, "faction": "Fire"},
     "w_zephyr_breath": {"name": "👑 Zephyr's Breath", "emoji": "🌪️", "tier": "SS", "dmg": 270, "faction": "Wind"},

@@ -89,8 +89,8 @@ class CombatView(discord.ui.View):
         self.current_mana = self.max_mana
         
         # Tăng sát thương cơ bản của người chơi theo Level (Cộng dồn với vũ khí)
-        equipped_weapon_dmg = WEAPONS["w_rusty_sword"]["dmg"] if self.faction_key == "Physical" else WEAPONS["w_wood_staff"]["dmg"]
-        self.base_dmg = equipped_weapon_dmg + (self.level * 2)
+        equipped_weapon_dmg = WEAPONS["w_dull_blade"]["dmg"] if self.faction_key == "Physical" else WEAPONS["w_broken_branch"]["dmg"]
+        self.base_dmg = equipped_weapon_dmg + (self.level * 3)
         
         # 2. Monster Dynamic Scaling theo số Tầng (Floor)
         floor_factor = max(0, self.floor - 1)
@@ -324,7 +324,7 @@ class WistoriaRPG(commands.Cog):
         max_mana = faction_info["base_mana"] + (level * faction_info["mana_growth"])
         
         # Lấy vũ khí mặc định hiện tại (Sau này sẽ query từ Database Inventory)
-        weapon_key = "w_rusty_sword" if faction_key == "Physical" else "w_wood_staff"
+        weapon_key = "w_dull_blade" if faction_key == "Physical" else "w_broken_branch"
         equipped_weapon = WEAPONS[weapon_key]
         total_dmg = equipped_weapon["dmg"] + (level * 3)
         
