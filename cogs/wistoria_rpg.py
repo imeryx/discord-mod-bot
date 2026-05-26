@@ -10,12 +10,12 @@ from .game_data import FACTIONS, MONSTERS, PLAYER_SKILLS, WEAPONS, MATERIALS
 # --- CẤU HÌNH HỆ THỐNG LÒ RÈN ---
 SELL_PRICES = {"D": 25, "C": 100, "B": 300, "A": 800, "S": 2000, "SS": 5000}
 
-# Sát thương cộng thêm trên mỗi cấp độ vũ khí dựa theo Tier
+# 1. Sát thương cộng thêm trên mỗi Bậc Tinh luyện (Ăn bản sao /upgrade)
 LVL_BONUS = {"D": 2, "C": 5, "B": 10, "A": 22, "S": 50, "SS": 110}
-
-# Chi phí Credits gốc để nâng cấp (Giá tăng dần: Chi phí = Giá gốc * Cấp hiện tại)
 UPGRADE_BASE_COSTS = {"D": 200, "C": 500, "B": 1200, "A": 3000, "S": 7000, "SS": 15000}
 
+# 2. Sát thương cộng thêm trên mỗi Cấp Cường hóa (Ăn vật liệu /enhance)
+ENHANCE_BONUS = {"D": 1, "C": 2, "B": 4, "A": 8, "S": 15, "SS": 25}
 
 # --- HELPER FUNCTION: DRAW BARS ---
 def generate_bar(current, maximum, color_emoji, empty_emoji="⬛", length=10):
@@ -40,7 +40,13 @@ class FactionSelectView(discord.ui.View):
         
         try:
             cursor.execute('INSERT INTO WistoriaPlayers (user_id, faction, equipped_weapon) VALUES (?, ?, ?)', (user_id, faction_key, starter_weapon))
-            cursor.execute('INSERT INTO PlayerInventory (user_id, weapon_key, quantity, weapon_level) VALUES (?, ?, 1, 1)', (user_id, starter_weapon))
+            
+            # Cố gắng thêm vũ khí với đủ các cột. Nếu lỗi thiếu cột, dùng fallback.
+            try:
+                cursor.execute('INSERT INTO PlayerInventory (user_id, weapon_key, quantity, weapon_level, enhance_level, weapon_exp) VALUES (?, ?, 1, 1, 1, 0)', (user_id, starter_weapon))
+            except sqlite3.OperationalError:
+                cursor.execute('INSERT INTO PlayerInventory (user_id, weapon_key, quantity) VALUES (?, ?, 1)', (user_id, starter_weapon))
+                
             conn.commit()
             
             embed = discord.Embed(
@@ -78,8 +84,7 @@ class CombatView(discord.ui.View):
         self.user = user
         self.monster = monster
         
-        # Nhận thêm dữ liệu weapon_level từ lệnh gọi dungeon
-        self.level, self.exp, self.credits, self.faction_key, self.max_floor, self.weapon_key, self.fighting_floor, self.weapon_level = player_data
+        self.level, self.exp, self.credits, self.faction_key, self.max_floor, self.weapon_key, self.fighting_floor, self.weapon_level, self.enhance_level = player_data
         
         faction_data = FACTIONS[self.faction_key]
         self.max_hp = faction_data["base_hp"] + (self.level * faction_data["hp_growth"])
@@ -87,19 +92,19 @@ class CombatView(discord.ui.View):
         self.max_mana = faction_data["base_mana"] + (self.level * faction_data["mana_growth"])
         self.current_mana = self.max_mana
         
-        # Tính toán sát thương dựa trên chỉ số Cường hóa vũ khí
         self.equipped_weapon = WEAPONS.get(self.weapon_key, WEAPONS["w_broken_branch"])
         w_tier = self.equipped_weapon["tier"]
-        lvl_bonus_dmg = (self.weapon_level - 1) * LVL_BONUS.get(w_tier, 0)
         
-        self.base_dmg = self.equipped_weapon["dmg"] + lvl_bonus_dmg + (self.level * 3)
+        refine_bonus_dmg = (self.weapon_level - 1) * LVL_BONUS.get(w_tier, 0)
+        enhance_bonus_dmg = (self.enhance_level - 1) * ENHANCE_BONUS.get(w_tier, 0)
+        self.base_dmg = self.equipped_weapon["dmg"] + refine_bonus_dmg + enhance_bonus_dmg + (self.level * 3)
         
         floor_factor = max(0, self.fighting_floor - 1)
         self.monster_max_hp = int(monster["hp"] * (1 + floor_factor * 0.08))
         self.monster_hp = self.monster_max_hp
         self.monster_dmg = int(monster["dmg"] * (1 + floor_factor * 0.04))
         
-        weapon_display = f"{self.equipped_weapon['name']} (+{self.weapon_level})" if self.weapon_level > 1 else self.equipped_weapon['name']
+        weapon_display = f"{self.equipped_weapon['name']} (Lv.{self.enhance_level} | +{self.weapon_level})"
         self.combat_log = f"Trang bị: **{weapon_display}**! The battle begins.\n"
         self.skill_cooldowns = {}
         self.update_buttons()
@@ -207,7 +212,6 @@ class CombatView(discord.ui.View):
             new_max_floor += 1
             level_up_msg = f"\n\n🎉 **LEVEL UP!** Reached Level {new_level}! Advanced Max Floor to {new_max_floor}!"
 
-        # Xử lý Logic rớt đồ (Drop System)
         drops_received = {}
         for drop in self.monster.get("drops", []):
             if random.randint(1, 100) <= drop["chance"]:
@@ -215,34 +219,30 @@ class CombatView(discord.ui.View):
                 drops_received[mat_key] = drops_received.get(mat_key, 0) + 1
 
         c = sqlite3.connect('bot_database.db')
-        
-        # 1. Cập nhật EXP và Tiền
         c.execute('UPDATE WistoriaPlayers SET level=?, exp=?, credits=?, current_floor=? WHERE user_id=?', (new_level, new_exp, self.credits + earned_credits, new_max_floor, self.user.id))
         
-        # 2. Cập nhật Vật liệu vào Database
         drop_text = ""
         if drops_received:
             drop_text = "\n\n**💎 Materials Found:**"
-            for mat_key, qty in drops_received.items():
-                mat_info = MATERIALS.get(mat_key)
-                if mat_info:
-                    drop_text += f"\n{mat_info['emoji']} **{mat_info['name']}** x{qty}"
+            try:
+                for mat_key, qty in drops_received.items():
+                    mat_info = MATERIALS.get(mat_key)
+                    if mat_info: drop_text += f"\n{mat_info['emoji']} **{mat_info['name']}** x{qty}"
                     
-                c.execute("""
-                    INSERT INTO PlayerMaterials (user_id, material_key, quantity) 
-                    VALUES (?, ?, ?) 
-                    ON CONFLICT(user_id, material_key) 
-                    DO UPDATE SET quantity = quantity + ?
-                """, (self.user.id, mat_key, qty, qty))
+                    # CÚ PHÁP AN TOÀN CHO MỌI PHIÊN BẢN SQLITE (Chống Crash)
+                    c.execute("SELECT quantity FROM PlayerMaterials WHERE user_id = ? AND material_key = ?", (self.user.id, mat_key))
+                    row = c.fetchone()
+                    if row:
+                        c.execute("UPDATE PlayerMaterials SET quantity = quantity + ? WHERE user_id = ? AND material_key = ?", (qty, self.user.id, mat_key))
+                    else:
+                        c.execute("INSERT INTO PlayerMaterials (user_id, material_key, quantity) VALUES (?, ?, ?)", (self.user.id, mat_key, qty))
+            except sqlite3.OperationalError:
+                drop_text = "\n\n⚠️ *Lưu ý: Chưa khởi tạo bảng Vật Liệu. Hãy chạy update_materials_db.py*"
                 
         c.commit()
         c.close()
 
-        win_embed = discord.Embed(
-            title="🏆 VICTORY!", 
-            description=f"You successfully defeated the **{self.monster['name']}**!\n\n**📦 Loot:**\n✨ **+{earned_credits}** Credits\n📈 **+{earned_exp}** EXP" + drop_text + level_up_msg, 
-            color=discord.Color.green()
-        )
+        win_embed = discord.Embed(title="🏆 VICTORY!", description=f"You successfully defeated the **{self.monster['name']}**!\n\n**📦 Loot:**\n✨ **+{earned_credits}** Credits\n📈 **+{earned_exp}** EXP" + drop_text + level_up_msg, color=discord.Color.green())
         win_embed.set_thumbnail(url=self.monster["gif"])
         await interaction.response.edit_message(embed=win_embed, view=None)
         self.stop()
@@ -261,7 +261,7 @@ class WistoriaRPG(commands.Cog):
         self.bot = bot
 
     @commands.Cog.listener()
-    async def on_ready(self): print("-> Cog [Wistoria RPG] Loaded (Forge & Weapon Inspection Enabled)!")
+    async def on_ready(self): print("-> Cog [Wistoria RPG] Loaded (Full Forge System Active)!")
 
     @app_commands.command(name="start_journey", description="Begin your journey at Rigarden Academy")
     async def start_journey(self, interaction: discord.Interaction):
@@ -277,28 +277,36 @@ class WistoriaRPG(commands.Cog):
     @app_commands.command(name="profile", description="View your detailed Rigarden Student Profile & Stats")
     async def profile(self, interaction: discord.Interaction):
         conn = sqlite3.connect('bot_database.db')
-        # Join bảng để lấy cấp độ của vũ khí đang trang bị
-        player = conn.cursor().execute("""
-            SELECT p.level, p.exp, p.credits, p.faction, p.current_floor, p.equipped_weapon, i.weapon_level 
-            FROM WistoriaPlayers p
-            LEFT JOIN PlayerInventory i ON p.user_id = i.user_id AND p.equipped_weapon = i.weapon_key
-            WHERE p.user_id = ?
-        """, (interaction.user.id,)).fetchone()
+        try:
+            player = conn.cursor().execute("""
+                SELECT p.level, p.exp, p.credits, p.faction, p.current_floor, p.equipped_weapon, i.weapon_level, i.enhance_level
+                FROM WistoriaPlayers p
+                LEFT JOIN PlayerInventory i ON p.user_id = i.user_id AND p.equipped_weapon = i.weapon_key
+                WHERE p.user_id = ?
+            """, (interaction.user.id,)).fetchone()
+        except sqlite3.OperationalError:
+            conn.close()
+            return await interaction.response.send_message("🛠️ Bot đang cập nhật Cường Hóa. Admin vui lòng chạy lệnh `update_enhance_db.py`!", ephemeral=True)
+            
         conn.close()
         
         if not player: return await interaction.response.send_message("⚠️ You haven't enrolled yet!", ephemeral=True)
-        level, exp, credits, faction_key, current_floor, weapon_key, weapon_level = player
+        level, exp, credits, faction_key, current_floor, weapon_key, weapon_level, enhance_level = player
         
         if not weapon_key: weapon_key = "w_dull_blade" if faction_key == "Physical" else "w_broken_branch"
         weapon_level = weapon_level if weapon_level is not None else 1
+        enhance_level = enhance_level if enhance_level is not None else 1
         
         faction_info = FACTIONS.get(faction_key, {"name": "Unknown", "emoji": "❓"})
         max_hp = faction_info["base_hp"] + (level * faction_info["hp_growth"])
         max_mana = faction_info["base_mana"] + (level * faction_info["mana_growth"])
         
         equipped_weapon = WEAPONS.get(weapon_key, WEAPONS["w_broken_branch"])
-        lvl_bonus_dmg = (weapon_level - 1) * LVL_BONUS.get(equipped_weapon["tier"], 0)
-        total_dmg = equipped_weapon["dmg"] + lvl_bonus_dmg + (level * 3)
+        w_tier = equipped_weapon["tier"]
+        
+        refine_bonus_dmg = (weapon_level - 1) * LVL_BONUS.get(w_tier, 0)
+        enhance_bonus_dmg = (enhance_level - 1) * ENHANCE_BONUS.get(w_tier, 0)
+        total_dmg = equipped_weapon["dmg"] + refine_bonus_dmg + enhance_bonus_dmg + (level * 3)
         
         skills_text = "".join([f"{sk['emoji']} **{sk['name']}** ({sk.get('mana_cost', 0)}MP{' | '+str(sk['cooldown'])+'T CD' if 'cooldown' in sk else ''})\n*↳ {sk['desc']}*\n\n" for sk in PLAYER_SKILLS.get(faction_key, []) if level >= sk["unlock_level"]])
         exp_needed = level * 100 
@@ -310,39 +318,14 @@ class WistoriaRPG(commands.Cog):
         embed.add_field(name="Credits", value=f"✨ **{credits:,}**", inline=True)
         embed.add_field(name="Combat Stats", value=f"💖 **HP:** {max_hp}\n💧 **MP:** {max_mana}\n⚔️ **Total DMG:** {total_dmg}", inline=True)
         
-        weapon_name_display = f"{equipped_weapon['name']} (+{weapon_level})" if weapon_level > 1 else equipped_weapon['name']
-        embed.add_field(name="Equipped Weapon", value=f"{equipped_weapon['emoji']} **{weapon_name_display}**\n*Tier {equipped_weapon['tier']} | Base DMG: {equipped_weapon['dmg']}*", inline=True)
+        weapon_name_display = f"{equipped_weapon['name']} (Lv.{enhance_level} | +{weapon_level})"
+        embed.add_field(name="Equipped Weapon", value=f"{equipped_weapon['emoji']} **{weapon_name_display}**\n*Tier {w_tier} | Base DMG: {equipped_weapon['dmg']}*", inline=True)
         embed.add_field(name="Max Tower Progress", value=f"🏰 **Floor {current_floor}**", inline=True)
         embed.add_field(name=f"Experience ({exp}/{exp_needed})", value=generate_bar(exp, exp_needed, "🟩"), inline=False)
         embed.add_field(name="Unlocked Skills", value=skills_text or "*No skills yet.*", inline=False)
         
         await interaction.response.send_message(embed=embed)
 
-    @app_commands.command(name="materials", description="Open your bag of crafting materials")
-    async def materials(self, interaction: discord.Interaction):
-        user_id = interaction.user.id
-        conn = sqlite3.connect('bot_database.db')
-        cursor = conn.cursor()
-        
-        cursor.execute("SELECT material_key, quantity FROM PlayerMaterials WHERE user_id = ? AND quantity > 0", (user_id,))
-        items = cursor.fetchall()
-        conn.close()
-        
-        if not items:
-            return await interaction.response.send_message("🕸️ Your material bag is completely empty. Go to the `/dungeon` to hunt monsters!", ephemeral=True)
-            
-        embed = discord.Embed(title=f"🎒 {interaction.user.display_name}'s Material Bag", color=discord.Color.teal())
-        
-        desc = ""
-        for mat_key, qty in items:
-            m_data = MATERIALS.get(mat_key)
-            if not m_data: continue
-            
-            desc += f"{m_data['emoji']} **{m_data['name']}** (x{qty})\n*Tier: {m_data['tier']} | ID: `{mat_key}`*\n\n"
-            
-        embed.description = desc
-        embed.set_footer(text="Materials are used to /enhance your weapons!")
-        await interaction.response.send_message(embed=embed)
     @app_commands.command(name="dungeon", description="Enter the dungeon to hunt monsters. Optionally select a floor to farm.")
     @app_commands.describe(target_floor="The floor you want to farm (must be <= your Max Floor)")
     async def dungeon(self, interaction: discord.Interaction, target_floor: int = None):
@@ -350,21 +333,25 @@ class WistoriaRPG(commands.Cog):
         conn = sqlite3.connect('bot_database.db')
         cursor = conn.cursor()
         
-        # Nhập thêm cấp độ vũ khí phục vụ tính sát thương thật trong trận đấu
-        player = cursor.execute("""
-            SELECT p.level, p.exp, p.credits, p.faction, p.current_floor, p.last_dungeon_time, p.equipped_weapon, i.weapon_level 
-            FROM WistoriaPlayers p
-            LEFT JOIN PlayerInventory i ON p.user_id = i.user_id AND p.equipped_weapon = i.weapon_key
-            WHERE p.user_id = ?
-        """, (user_id,)).fetchone()
+        try:
+            player = cursor.execute("""
+                SELECT p.level, p.exp, p.credits, p.faction, p.current_floor, p.last_dungeon_time, p.equipped_weapon, i.weapon_level, i.enhance_level
+                FROM WistoriaPlayers p
+                LEFT JOIN PlayerInventory i ON p.user_id = i.user_id AND p.equipped_weapon = i.weapon_key
+                WHERE p.user_id = ?
+            """, (user_id,)).fetchone()
+        except sqlite3.OperationalError:
+            conn.close()
+            return await interaction.response.send_message("🛠️ Bot đang cập nhật Cường Hóa. Admin vui lòng chạy lệnh `update_enhance_db.py`!", ephemeral=True)
         
         if not player:
             conn.close()
             return await interaction.response.send_message("⚠️ Use `/start_journey` first.", ephemeral=True)
             
-        level, exp, credits, faction, max_floor, str_last_time, weapon_key, weapon_level = player
+        level, exp, credits, faction, max_floor, str_last_time, weapon_key, weapon_level, enhance_level = player
         if not weapon_key: weapon_key = "w_dull_blade" if faction == "Physical" else "w_broken_branch"
         weapon_level = weapon_level if weapon_level is not None else 1
+        enhance_level = enhance_level if enhance_level is not None else 1
         
         fighting_floor = max_floor
         if target_floor is not None:
@@ -387,9 +374,36 @@ class WistoriaRPG(commands.Cog):
         tier = "1-20" if fighting_floor <= 20 else "21-50" if fighting_floor <= 50 else "51-100"
         monster = random.choice(MONSTERS[tier])
         
-        player_data = (level, exp, credits, faction, max_floor, weapon_key, fighting_floor, weapon_level)
+        player_data = (level, exp, credits, faction, max_floor, weapon_key, fighting_floor, weapon_level, enhance_level)
         combat_view = CombatView(interaction.user, player_data, monster)
         await interaction.response.send_message(embed=combat_view.build_embed(), view=combat_view)
+
+    @app_commands.command(name="materials", description="Open your bag of crafting materials")
+    async def materials(self, interaction: discord.Interaction):
+        user_id = interaction.user.id
+        conn = sqlite3.connect('bot_database.db')
+        cursor = conn.cursor()
+        
+        try:
+            cursor.execute("SELECT material_key, quantity FROM PlayerMaterials WHERE user_id = ? AND quantity > 0", (user_id,))
+            items = cursor.fetchall()
+        except sqlite3.OperationalError:
+            conn.close()
+            return await interaction.response.send_message("🛠️ Chưa có túi vật liệu! Admin vui lòng chạy `update_materials_db.py`.", ephemeral=True)
+        conn.close()
+        
+        if not items: return await interaction.response.send_message("🕸️ Your material bag is completely empty. Go to the `/dungeon` to hunt monsters!", ephemeral=True)
+            
+        embed = discord.Embed(title=f"🎒 {interaction.user.display_name}'s Material Bag", color=discord.Color.teal())
+        desc = ""
+        for mat_key, qty in items:
+            m_data = MATERIALS.get(mat_key)
+            if not m_data: continue
+            desc += f"{m_data['emoji']} **{m_data['name']}** (x{qty})\n*Tier: {m_data['tier']} | ID: `{mat_key}`*\n\n"
+            
+        embed.description = desc
+        embed.set_footer(text="Materials are used to /enhance your weapons!")
+        await interaction.response.send_message(embed=embed)
 
     @app_commands.command(name="daily", description="Claim your daily allowance of 1000 Credits")
     async def daily(self, interaction: discord.Interaction):
@@ -479,32 +493,36 @@ class WistoriaRPG(commands.Cog):
             return await interaction.response.send_message("⚠️ You haven't enrolled yet!", ephemeral=True)
             
         equipped = player[0]
-        # Lấy thêm weapon_level để hiển thị
-        cursor.execute("SELECT weapon_key, quantity, weapon_level FROM PlayerInventory WHERE user_id = ?", (user_id,))
-        items = cursor.fetchall()
+        try:
+            cursor.execute("SELECT weapon_key, quantity, weapon_level, enhance_level FROM PlayerInventory WHERE user_id = ?", (user_id,))
+            items = cursor.fetchall()
+        except sqlite3.OperationalError:
+            conn.close()
+            return await interaction.response.send_message("🛠️ Bot đang cập nhật Cường Hóa. Admin vui lòng chạy lệnh `update_enhance_db.py`!", ephemeral=True)
+            
         conn.close()
         
         if not items: return await interaction.response.send_message("🎒 Your inventory is completely empty.", ephemeral=True)
             
         embed = discord.Embed(title=f"🎒 {interaction.user.display_name}'s Inventory", color=discord.Color.gold())
         desc = ""
-        for weapon_key, qty, w_lvl in items:
+        for weapon_key, qty, w_lvl, e_lvl in items:
             w_data = WEAPONS.get(weapon_key)
             if not w_data: continue
             
             w_lvl = w_lvl if w_lvl is not None else 1
+            e_lvl = e_lvl if e_lvl is not None else 1
             status = "🔴 **[EQUIPPED]**" if weapon_key == equipped else f"ID: `{weapon_key}`"
             
-            # Tính toán sát thương thực tế bao gồm cả cấp độ để hiển thị trong kho đồ
-            dmg_bonus = (w_lvl - 1) * LVL_BONUS.get(w_data["tier"], 0)
+            dmg_bonus = ((w_lvl - 1) * LVL_BONUS.get(w_data["tier"], 0)) + ((e_lvl - 1) * ENHANCE_BONUS.get(w_data["tier"], 0))
             actual_dmg = w_data["dmg"] + dmg_bonus
             
-            lvl_str = f" (+{w_lvl})" if w_lvl > 1 else ""
-            desc += f"{w_data['emoji']} **{w_data['name']}{lvl_str}** (x{qty})\n*Tier {w_data['tier']} | DMG: {actual_dmg} | {status}*\n\n"
+            desc += f"{w_data['emoji']} **{w_data['name']} (Lv.{e_lvl} | +{w_lvl})** (x{qty})\n*Tier {w_data['tier']} | DMG: {actual_dmg} | {status}*\n\n"
             
         embed.description = desc
-        embed.set_footer(text="Use /equip <weapon_id> to change or /upgrade <weapon_id> to forge!")
-        await interaction.response.set_message(embed=embed)
+        embed.set_footer(text="Use /equip to change, /upgrade to Refine (+), /enhance to Level up!")
+        # Lỗi cũ của bạn nằm ở dòng này (set_message). Đã được sửa lại thành send_message:
+        await interaction.response.send_message(embed=embed)
 
     @app_commands.command(name="equip", description="Equip a weapon from your inventory")
     @app_commands.describe(weapon_id="The ID of the weapon (e.g., w_iron_sword)")
@@ -570,14 +588,18 @@ class WistoriaRPG(commands.Cog):
         new_credits = current_credits - cost
         cursor.execute("UPDATE WistoriaPlayers SET credits = ? WHERE user_id = ?", (new_credits, user_id))
         
-        # Sửa đổi lệnh INSERT gacha để mặc định weapon_level = 1 nếu là vũ khí mới quay được lần đầu
-        cursor.execute("""
-            INSERT INTO PlayerInventory (user_id, weapon_key, quantity, weapon_level) 
-            VALUES (?, ?, 1, 1) 
-            ON CONFLICT(user_id, weapon_key) 
-            DO UPDATE SET quantity = quantity + 1
-        """, (user_id, pulled_weapon_key))
-        
+        # CÚ PHÁP AN TOÀN CHO MỌI PHIÊN BẢN SQLITE
+        try:
+            cursor.execute("SELECT quantity FROM PlayerInventory WHERE user_id = ? AND weapon_key = ?", (user_id, pulled_weapon_key))
+            row = cursor.fetchone()
+            if row:
+                cursor.execute("UPDATE PlayerInventory SET quantity = quantity + 1 WHERE user_id = ? AND weapon_key = ?", (user_id, pulled_weapon_key))
+            else:
+                cursor.execute("INSERT INTO PlayerInventory (user_id, weapon_key, quantity, weapon_level, enhance_level, weapon_exp) VALUES (?, ?, 1, 1, 1, 0)", (user_id, pulled_weapon_key))
+        except sqlite3.OperationalError:
+            conn.close()
+            return await interaction.response.send_message("🛠️ Bot đang cập nhật Cường Hóa. Admin vui lòng chạy lệnh `update_enhance_db.py`!", ephemeral=True)
+            
         conn.commit()
         conn.close()
         
@@ -590,9 +612,101 @@ class WistoriaRPG(commands.Cog):
 
 
     # ========================================================
-    # MỚI 1: TÍNH NĂNG LÒ RÈN NÂNG CẤP VŨ KHÍ (UPGRADE)
+    # LỆNH MỚI: /ENHANCE (CƯỜNG HÓA BẰNG VẬT LIỆU)
     # ========================================================
-    @app_commands.command(name="upgrade", description="Consume 1 duplicate copy + Credits to level up a weapon")
+    @app_commands.command(name="enhance", description="Level up a weapon using materials (Lv.1 to Lv.50)")
+    @app_commands.describe(weapon_id="ID of weapon", material_id="ID of material", quantity="How many materials to consume")
+    async def enhance(self, interaction: discord.Interaction, weapon_id: str, material_id: str, quantity: int = 1):
+        if quantity < 1: return await interaction.response.send_message("❌ Quantity must be at least 1.", ephemeral=True)
+        if weapon_id not in WEAPONS: return await interaction.response.send_message("❌ Invalid weapon ID.", ephemeral=True)
+        if material_id not in MATERIALS: return await interaction.response.send_message("❌ Invalid material ID.", ephemeral=True)
+
+        user_id = interaction.user.id
+        conn = sqlite3.connect('bot_database.db')
+        cursor = conn.cursor()
+
+        try:
+            cursor.execute("SELECT quantity FROM PlayerMaterials WHERE user_id = ? AND material_key = ?", (user_id, material_id))
+            mat = cursor.fetchone()
+        except sqlite3.OperationalError:
+            conn.close()
+            return await interaction.response.send_message("🛠️ Chưa có túi vật liệu! Admin vui lòng chạy `update_materials_db.py`.", ephemeral=True)
+            
+        if not mat or mat[0] < quantity:
+            conn.close()
+            return await interaction.response.send_message(f"❌ Not enough {MATERIALS[material_id]['emoji']} **{MATERIALS[material_id]['name']}**!", ephemeral=True)
+
+        try:
+            cursor.execute("SELECT enhance_level, weapon_exp FROM PlayerInventory WHERE user_id = ? AND weapon_key = ?", (user_id, weapon_id))
+            wep = cursor.fetchone()
+        except sqlite3.OperationalError:
+            conn.close()
+            return await interaction.response.send_message("🛠️ Bot đang cập nhật hệ thống Cường Hóa. Admin vui lòng chạy `update_enhance_db.py`!", ephemeral=True)
+            
+        if not wep:
+            conn.close()
+            return await interaction.response.send_message("❌ You don't own this weapon.", ephemeral=True)
+
+        e_lvl, w_exp = wep
+        e_lvl = e_lvl if e_lvl is not None else 1
+        w_exp = w_exp if w_exp is not None else 0
+
+        if e_lvl >= 50:
+            conn.close()
+            return await interaction.response.send_message("🌟 This weapon is already at Maximum Level (Lv.50)!", ephemeral=True)
+
+        cost = quantity * 20
+        cursor.execute("SELECT credits FROM WistoriaPlayers WHERE user_id = ?", (user_id,))
+        creds = cursor.fetchone()[0]
+        if creds < cost:
+            conn.close()
+            return await interaction.response.send_message(f"💸 Not enough Credits! Enhancing requires **{cost} ✨**. (You have: {creds})", ephemeral=True)
+
+        # Thuật toán tính Level vũ khí
+        mat_exp = MATERIALS[material_id].get('exp_value', 10) * quantity
+        new_exp = w_exp + mat_exp
+        new_lvl = e_lvl
+        target_weapon = WEAPONS[weapon_id]
+        tier = target_weapon["tier"]
+
+        level_up_occurred = False
+        while new_lvl < 50:
+            exp_needed = new_lvl * 50
+            if new_exp >= exp_needed:
+                new_exp -= exp_needed
+                new_lvl += 1
+                level_up_occurred = True
+            else:
+                break
+
+        cursor.execute("UPDATE WistoriaPlayers SET credits = credits - ? WHERE user_id = ?", (cost, user_id))
+        cursor.execute("UPDATE PlayerMaterials SET quantity = quantity - ? WHERE user_id = ? AND material_key = ?", (quantity, user_id, material_id))
+        cursor.execute("UPDATE PlayerInventory SET enhance_level = ?, weapon_exp = ? WHERE user_id = ? AND weapon_key = ?", (new_lvl, new_exp, user_id, weapon_id))
+        conn.commit()
+        conn.close()
+
+        embed = discord.Embed(
+            title="✨ Weapon Enhancement ✨",
+            description=f"You infused **{quantity}x {MATERIALS[material_id]['name']}** into your weapon!",
+            color=discord.Color.teal()
+        )
+        embed.add_field(name="Weapon", value=f"{target_weapon['emoji']} **{target_weapon['name']}**", inline=True)
+        
+        if level_up_occurred:
+            embed.color = discord.Color.gold()
+            embed.add_field(name="Level Up!", value=f"Lv.{e_lvl} ➔ **Lv.{new_lvl}** 🎉", inline=True)
+            embed.add_field(name="DMG Growth", value=f"+{(new_lvl - e_lvl) * ENHANCE_BONUS[tier]} Base DMG", inline=False)
+        else:
+            embed.add_field(name="Current Level", value=f"**Lv.{new_lvl}**", inline=True)
+            
+        exp_next = new_lvl * 50
+        embed.add_field(name="Progress to next Level", value=f"`{generate_bar(new_exp, exp_next, '🟩')}` {new_exp}/{exp_next} EXP", inline=False)
+        embed.set_footer(text=f"Cost: {cost} ✨ | Remaining Credits: {creds - cost}")
+
+        await interaction.response.send_message(embed=embed)
+
+
+    @app_commands.command(name="upgrade", description="Refine weapon using duplicate copies (+1 Rank)")
     @app_commands.describe(weapon_id="The ID of the weapon to upgrade (e.g., w_iron_sword)")
     async def upgrade(self, interaction: discord.Interaction, weapon_id: str):
         user_id = interaction.user.id
@@ -605,7 +719,6 @@ class WistoriaRPG(commands.Cog):
         conn = sqlite3.connect('bot_database.db')
         cursor = conn.cursor()
         
-        # 1. Kiểm tra túi đồ của người chơi
         cursor.execute("SELECT quantity, weapon_level FROM PlayerInventory WHERE user_id = ? AND weapon_key = ?", (user_id, weapon_id))
         inv_data = cursor.fetchone()
         
@@ -616,10 +729,8 @@ class WistoriaRPG(commands.Cog):
         current_qty, current_lvl = inv_data
         current_lvl = current_lvl if current_lvl is not None else 1
         
-        # 2. Tính toán chi phí nâng cấp
         upgrade_cost = UPGRADE_BASE_COSTS[tier] * current_lvl
         
-        # 3. Kiểm tra ví tiền người chơi
         cursor.execute("SELECT credits FROM WistoriaPlayers WHERE user_id = ?", (user_id,))
         player_credits = cursor.fetchone()[0]
         
@@ -627,7 +738,6 @@ class WistoriaRPG(commands.Cog):
             conn.close()
             return await interaction.response.send_message(f"💸 **Insolvent!** Upgrading this weapon to +{current_lvl + 1} requires **{upgrade_cost} ✨ Credits**. (You have: {player_credits})", ephemeral=True)
             
-        # 4. Thực thi nâng cấp (Trừ 1 bản sao, Trừ tiền, Tăng 1 Level vũ khí)
         new_credits = player_credits - upgrade_cost
         new_qty = current_qty - 1
         new_lvl = current_lvl + 1
@@ -638,12 +748,11 @@ class WistoriaRPG(commands.Cog):
         conn.commit()
         conn.close()
         
-        # Tính toán sát thương mới để khoe
         old_dmg = target_weapon["dmg"] + (current_lvl - 1) * LVL_BONUS[tier]
         new_dmg = target_weapon["dmg"] + (new_lvl - 1) * LVL_BONUS[tier]
         
         embed = discord.Embed(
-            title="🔨 Rigarden Blacksmith - Success! 🔨",
+            title="🔨 Rigarden Blacksmith - Refinement Success! 🔨",
             description=f"The blacksmith successfully forged and refined your weapon!",
             color=discord.Color.dark_gold()
         )
@@ -655,9 +764,6 @@ class WistoriaRPG(commands.Cog):
         await interaction.response.send_message(embed=embed)
 
 
-    # ========================================================
-    # MỚI 2: LỆNH TRA CỨU THÔNG SỐ VŨ KHÍ (WEAPON)
-    # ========================================================
     @app_commands.command(name="weapon", description="Inspect the detailed statistics of a specific weapon")
     @app_commands.describe(weapon_id="The ID of the weapon (e.g., w_iron_sword, w_broken_branch)")
     async def weapon(self, interaction: discord.Interaction, weapon_id: str):
@@ -667,39 +773,41 @@ class WistoriaRPG(commands.Cog):
         target_weapon = WEAPONS[weapon_id]
         tier = target_weapon["tier"]
         
-        # Kiểm tra xem người dùng hiện tại có sở hữu và nâng cấp nó không
         conn = sqlite3.connect('bot_database.db')
         cursor = conn.cursor()
-        cursor.execute("SELECT quantity, weapon_level FROM PlayerInventory WHERE user_id = ? AND weapon_key = ?", (interaction.user.id, weapon_id))
-        owned_data = cursor.fetchone()
+        try:
+            cursor.execute("SELECT quantity, weapon_level, enhance_level FROM PlayerInventory WHERE user_id = ? AND weapon_key = ?", (interaction.user.id, weapon_id))
+            owned_data = cursor.fetchone()
+        except sqlite3.OperationalError:
+            conn.close()
+            return await interaction.response.send_message("🛠️ Bot đang cập nhật Cường Hóa. Admin vui lòng chạy lệnh `update_enhance_db.py`!", ephemeral=True)
         conn.close()
         
-        # Thiết lập thông tin hiển thị
         if owned_data:
-            qty, lvl = owned_data
-            lvl = lvl if lvl is not None else 1
-            ownership_status = f"✅ **Owned:** x{qty} (Level +{lvl})"
-            bonus_dmg = (lvl - 1) * LVL_BONUS[tier]
-            display_dmg = f"**{target_weapon['dmg'] + bonus_dmg}** ({target_weapon['dmg']} Base + {bonus_dmg} Forge)"
-            next_upgrade_cost = f"{UPGRADE_BASE_COSTS[tier] * lvl} ✨ Credits"
+            qty, w_lvl, e_lvl = owned_data
+            w_lvl = w_lvl if w_lvl is not None else 1
+            e_lvl = e_lvl if e_lvl is not None else 1
+            ownership_status = f"✅ **Owned:** x{qty}\n**Current:** Lv.{e_lvl} | +{w_lvl}"
+            bonus_dmg = ((w_lvl - 1) * LVL_BONUS[tier]) + ((e_lvl - 1) * ENHANCE_BONUS[tier])
+            display_dmg = f"**{target_weapon['dmg'] + bonus_dmg}** ({target_weapon['dmg']} Base + {bonus_dmg} Bonus)"
+            next_upgrade_cost = f"{UPGRADE_BASE_COSTS[tier] * w_lvl} ✨ Credits"
         else:
-            lvl = 1
+            w_lvl = 1
             ownership_status = "❌ **Not Owned**"
             display_dmg = f"{target_weapon['dmg']} (Base)"
             next_upgrade_cost = f"{UPGRADE_BASE_COSTS[tier]} ✨ Credits"
             
-        # Xác định màu sắc Embed theo độ hiếm
         tier_colors = {"D": 0x95a5a6, "C": 0x7f8c8d, "B": 0x2ecc71, "A": 0x3498db, "S": 0x9b59b6, "SS": 0xf1c40f}
         
         embed = discord.Embed(
             title=f"{target_weapon['emoji']} Weapon Codex: {target_weapon['name']}",
-            description=f"**Weapon ID:** `{weapon_id}`\n**Status:** {ownership_status}",
+            description=f"**Weapon ID:** `{weapon_id}`\n{ownership_status}",
             color=tier_colors.get(tier, 0xffffff)
         )
         
         embed.add_field(name="Classification", value=f"⭐ **Tier:** {tier}\n🔮 **Faction:** {target_weapon['faction']}", inline=True)
-        embed.add_field(name="Combat Power", value=f"⚔️ **Total DMG:** {display_dmg}\n📈 **Growth per lvl:** +{LVL_BONUS[tier]} DMG", inline=True)
-        embed.add_field(name="Forge & Economy", value=f"🛠️ **Next Upgrade Cost:** {next_upgrade_cost}\n💰 **Recycle Value:** {SELL_PRICES.get(tier, 25)} Credits", inline=False)
+        embed.add_field(name="Combat Power", value=f"⚔️ **Total DMG:** {display_dmg}\n📈 **+Lv Growth:** +{ENHANCE_BONUS[tier]} DMG\n💥 **+Rank Growth:** +{LVL_BONUS[tier]} DMG", inline=True)
+        embed.add_field(name="Economy", value=f"🛠️ **Next Refine Cost:** {next_upgrade_cost}\n💰 **Recycle Value:** {SELL_PRICES.get(tier, 25)} Credits", inline=False)
         
         embed.set_footer(text="To upgrade this weapon, obtain duplicates and use /upgrade!")
         await interaction.response.send_message(embed=embed)
