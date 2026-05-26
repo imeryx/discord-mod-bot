@@ -207,12 +207,42 @@ class CombatView(discord.ui.View):
             new_max_floor += 1
             level_up_msg = f"\n\n🎉 **LEVEL UP!** Reached Level {new_level}! Advanced Max Floor to {new_max_floor}!"
 
+        # Xử lý Logic rớt đồ (Drop System)
+        drops_received = {}
+        for drop in self.monster.get("drops", []):
+            if random.randint(1, 100) <= drop["chance"]:
+                mat_key = drop["item"]
+                drops_received[mat_key] = drops_received.get(mat_key, 0) + 1
+
         c = sqlite3.connect('bot_database.db')
+        
+        # 1. Cập nhật EXP và Tiền
         c.execute('UPDATE WistoriaPlayers SET level=?, exp=?, credits=?, current_floor=? WHERE user_id=?', (new_level, new_exp, self.credits + earned_credits, new_max_floor, self.user.id))
+        
+        # 2. Cập nhật Vật liệu vào Database
+        drop_text = ""
+        if drops_received:
+            drop_text = "\n\n**💎 Materials Found:**"
+            for mat_key, qty in drops_received.items():
+                mat_info = MATERIALS.get(mat_key)
+                if mat_info:
+                    drop_text += f"\n{mat_info['emoji']} **{mat_info['name']}** x{qty}"
+                    
+                c.execute("""
+                    INSERT INTO PlayerMaterials (user_id, material_key, quantity) 
+                    VALUES (?, ?, ?) 
+                    ON CONFLICT(user_id, material_key) 
+                    DO UPDATE SET quantity = quantity + ?
+                """, (self.user.id, mat_key, qty, qty))
+                
         c.commit()
         c.close()
 
-        win_embed = discord.Embed(title="🏆 VICTORY!", description=f"You successfully defeated the **{self.monster['name']}**!\n\n**📦 Loot:**\n✨ **+{earned_credits}** Credits\n📈 **+{earned_exp}** EXP" + level_up_msg, color=discord.Color.green())
+        win_embed = discord.Embed(
+            title="🏆 VICTORY!", 
+            description=f"You successfully defeated the **{self.monster['name']}**!\n\n**📦 Loot:**\n✨ **+{earned_credits}** Credits\n📈 **+{earned_exp}** EXP" + drop_text + level_up_msg, 
+            color=discord.Color.green()
+        )
         win_embed.set_thumbnail(url=self.monster["gif"])
         await interaction.response.edit_message(embed=win_embed, view=None)
         self.stop()
@@ -288,6 +318,31 @@ class WistoriaRPG(commands.Cog):
         
         await interaction.response.send_message(embed=embed)
 
+    @app_commands.command(name="materials", description="Open your bag of crafting materials")
+    async def materials(self, interaction: discord.Interaction):
+        user_id = interaction.user.id
+        conn = sqlite3.connect('bot_database.db')
+        cursor = conn.cursor()
+        
+        cursor.execute("SELECT material_key, quantity FROM PlayerMaterials WHERE user_id = ? AND quantity > 0", (user_id,))
+        items = cursor.fetchall()
+        conn.close()
+        
+        if not items:
+            return await interaction.response.send_message("🕸️ Your material bag is completely empty. Go to the `/dungeon` to hunt monsters!", ephemeral=True)
+            
+        embed = discord.Embed(title=f"🎒 {interaction.user.display_name}'s Material Bag", color=discord.Color.teal())
+        
+        desc = ""
+        for mat_key, qty in items:
+            m_data = MATERIALS.get(mat_key)
+            if not m_data: continue
+            
+            desc += f"{m_data['emoji']} **{m_data['name']}** (x{qty})\n*Tier: {m_data['tier']} | ID: `{mat_key}`*\n\n"
+            
+        embed.description = desc
+        embed.set_footer(text="Materials are used to /enhance your weapons!")
+        await interaction.response.send_message(embed=embed)
     @app_commands.command(name="dungeon", description="Enter the dungeon to hunt monsters. Optionally select a floor to farm.")
     @app_commands.describe(target_floor="The floor you want to farm (must be <= your Max Floor)")
     async def dungeon(self, interaction: discord.Interaction, target_floor: int = None):

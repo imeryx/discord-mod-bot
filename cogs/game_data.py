@@ -116,86 +116,102 @@ MONSTERS = {
         {
             "name": "Mutant Slime", "emoji": "🟢", "hp": 50, "dmg": 5, "credits": 20,
             "skill_name": "Acid Splash", "skill_dmg_mult": 1.2, "skill_chance": 15,
-            "gif": "https://i.pinimg.com/1200x/fc/05/f7/fc05f7ee42456f2b0f15c1ecab66c3a4.jpg" 
+            "gif": "https://i.pinimg.com/1200x/fc/05/f7/fc05f7ee42456f2b0f15c1ecab66c3a4.jpg",
+            "drops": [{"item": "mat_magic_dust", "chance": 50}, {"item": "mat_iron_ore", "chance": 20}]
         },
         {
             "name": "Scout Goblin", "emoji": "👺", "hp": 80, "dmg": 10, "credits": 35,
             "skill_name": "Sneak Attack", "skill_dmg_mult": 1.5, "skill_chance": 20,
-            "gif": "https://i.pinimg.com/736x/2e/20/58/2e2058b0474057ebd9b390d4868276a0.jpg"
+            "gif": "https://i.pinimg.com/736x/2e/20/58/2e2058b0474057ebd9b390d4868276a0.jpg",
+            "drops": [{"item": "mat_iron_ore", "chance": 50}, {"item": "mat_honing_stone", "chance": 10}]
         },
         {
             "name": "Demonic Wolf", "emoji": "🐺", "hp": 120, "dmg": 12, "credits": 50,
             "skill_name": "Feral Bite", "skill_dmg_mult": 1.5, "skill_chance": 25,
-            "gif": "https://i.pinimg.com/736x/1c/1f/d9/1c1fd95239cf77df9b6c53d100dadeb1.jpg"
+            "gif": "https://i.pinimg.com/736x/1c/1f/d9/1c1fd95239cf77df9b6c53d100dadeb1.jpg",
+            "drops": [{"item": "mat_iron_ore", "chance": 30}, {"item": "mat_gale_feather", "chance": 10}]
         },
         {
             "name": "Giant Spider", "emoji": "🕷️", "hp": 90, "dmg": 10, "credits": 45,
             "skill_name": "Venom Web", "skill_dmg_mult": 1.5, "skill_chance": 20,
-            "gif": "https://i.pinimg.com/736x/05/cb/61/05cb61ba7220f99c29c82ff976f88906.jpg"
+            "gif": "https://i.pinimg.com/736x/05/cb/61/05cb61ba7220f99c29c82ff976f88906.jpg",
+            "drops": [{"item": "mat_magic_dust", "chance": 40}, {"item": "mat_terra_pebble", "chance": 10}]
         },
         {
             "name": "Living Armor", "emoji": "🤖", "hp": 140, "dmg": 8, "credits": 60,
             "skill_name": "Shield Bash", "skill_dmg_mult": 1.5, "skill_chance": 15,
-            "gif": "https://i.pinimg.com/736x/23/29/a7/2329a703aad2a24273ec866d56ae8d60.jpg"
+            "gif": "https://i.pinimg.com/736x/23/29/a7/2329a703aad2a24273ec866d56ae8d60.jpg",
+            "drops": [{"item": "mat_iron_ore", "chance": 60}, {"item": "mat_honing_stone", "chance": 15}]
         },
         {
             "name": "Rogue Mage", "emoji": "🧙", "hp": 90, "dmg": 15, "credits": 55,
             "skill_name": "Magic Missile", "skill_dmg_mult": 1.8, "skill_chance": 30,
-            "gif": "https://i.pinimg.com/736x/d1/0e/64/d10e646926bc2c7c27d013cc86592f50.jpg"
+            "gif": "https://i.pinimg.com/736x/d1/0e/64/d10e646926bc2c7c27d013cc86592f50.jpg",
+            "drops": [{"item": "mat_magic_dust", "chance": 60}, {"item": "mat_spark_crystal", "chance": 10}]
         }
     ],
     "21-50": [
         {
             "name": "Crystal Golem", "emoji": "🗿", "hp": 150, "dmg": 12, "credits": 120,
             "skill_name": "Earthquake", "skill_dmg_mult": 1.8, "skill_chance": 30,
-            "gif": "https://i.pinimg.com/736x/a5/39/29/a539298baec30c54350b1646c5a8b8cd.jpg"
+            "gif": "https://i.pinimg.com/736x/a5/39/29/a539298baec30c54350b1646c5a8b8cd.jpg",
+            "drops": [{"item": "mat_terra_pebble", "chance": 40}, {"item": "mat_iron_ore", "chance": 50}, {"item": "mat_ancient_essence", "chance": 5}]
         },
         {
             "name": "Mana-sucking Bat", "emoji": "🦇", "hp": 90, "dmg": 18, "credits": 150,
             "skill_name": "Vampiric Drain", "skill_dmg_mult": 2.0, "skill_chance": 35,
-            "gif": "https://i.pinimg.com/736x/d6/1b/26/d61b261d214ce33559a73ff7d3f7436f.jpg"
+            "gif": "https://i.pinimg.com/736x/d6/1b/26/d61b261d214ce33559a73ff7d3f7436f.jpg",
+            "drops": [{"item": "mat_magic_dust", "chance": 50}, {"item": "mat_gale_feather", "chance": 30}, {"item": "mat_ancient_essence", "chance": 5}]
         },
         {
             "name": "Headless Knight", "emoji": "🛡️", "hp": 130, "dmg": 16, "credits": 250,
             "skill_name": "Decapitate", "skill_dmg_mult": 2.5, "skill_chance": 25,
-            "gif": "https://i.pinimg.com/736x/72/54/3a/72543a52bba0ef42a3d53753a1e935dc.jpg"
+            "gif": "https://i.pinimg.com/736x/72/54/3a/72543a52bba0ef42a3d53753a1e935dc.jpg",
+            "drops": [{"item": "mat_honing_stone", "chance": 40}, {"item": "mat_iron_ore", "chance": 40}, {"item": "mat_ancient_essence", "chance": 8}]
         },
         {
             "name": "Fire Salamander", "emoji": "🦎", "hp": 110, "dmg": 20, "credits": 200,
             "skill_name": "Flame Breath", "skill_dmg_mult": 2.2, "skill_chance": 30,
-            "gif": "https://i.pinimg.com/736x/b8/fb/41/b8fb415501e7ca551ec46d29473c3982.jpg"
+            "gif": "https://i.pinimg.com/736x/b8/fb/41/b8fb415501e7ca551ec46d29473c3982.jpg",
+            "drops": [{"item": "mat_flame_ember", "chance": 40}, {"item": "mat_dragon_blood", "chance": 5}]
         },
         {
             "name": "Shadow Assassin", "emoji": "🥷", "hp": 80, "dmg": 25, "credits": 280,
             "skill_name": "Fatal Backstab", "skill_dmg_mult": 3.0, "skill_chance": 20,
-            "gif": "https://i.pinimg.com/1200x/02/74/f7/0274f7942246e7d73ce4549b01d9bf78.jpg"
+            "gif": "https://i.pinimg.com/1200x/02/74/f7/0274f7942246e7d73ce4549b01d9bf78.jpg",
+            "drops": [{"item": "mat_honing_stone", "chance": 30}, {"item": "mat_spark_crystal", "chance": 30}, {"item": "mat_ancient_essence", "chance": 10}]
         }
     ],
     "51-100": [
         {
             "name": "Supreme Dark Mage", "emoji": "🧙‍♂️", "hp": 180, "dmg": 35, "credits": 1000,
             "skill_name": "Death Ray", "skill_dmg_mult": 2.5, "skill_chance": 40,
-            "gif": "https://i.pinimg.com/736x/3b/c9/7c/3bc97cd91d03d3ce5b65fd5127c40d0a.jpg"
+            "gif": "https://i.pinimg.com/736x/3b/c9/7c/3bc97cd91d03d3ce5b65fd5127c40d0a.jpg",
+            "drops": [{"item": "mat_ancient_essence", "chance": 50}, {"item": "mat_magic_dust", "chance": 80}, {"item": "mat_mercedes_gem", "chance": 2}]
         },
         {
             "name": "Eternal Ice Dragon", "emoji": "🐉", "hp": 300, "dmg": 25, "credits": 2500,
             "skill_name": "Absolute Frost Breath", "skill_dmg_mult": 2.0, "skill_chance": 35,
-            "gif": "https://i.pinimg.com/736x/eb/c4/c9/ebc4c95467b106876092a62837df0707.jpg"
+            "gif": "https://i.pinimg.com/736x/eb/c4/c9/ebc4c95467b106876092a62837df0707.jpg",
+            "drops": [{"item": "mat_dragon_blood", "chance": 50}, {"item": "mat_frost_shard", "chance": 70}, {"item": "mat_mercedes_gem", "chance": 3}]
         },
         {
             "name": "Abyssal Behemoth", "emoji": "👹", "hp": 400, "dmg": 20, "credits": 3500,
             "skill_name": "World Shatter", "skill_dmg_mult": 2.2, "skill_chance": 30,
-            "gif": "https://i.pinimg.com/1200x/6d/ed/ba/6dedbaa8274d716e1d184c7b06793e45.jpg"
+            "gif": "https://i.pinimg.com/1200x/6d/ed/ba/6dedbaa8274d716e1d184c7b06793e45.jpg",
+            "drops": [{"item": "mat_terra_pebble", "chance": 80}, {"item": "mat_dragon_blood", "chance": 40}, {"item": "mat_mercedes_gem", "chance": 2}]
         },
         {
             "name": "Fallen Vander", "emoji": "👑", "hp": 250, "dmg": 30, "credits": 4000,
             "skill_name": "Forbidden Magic", "skill_dmg_mult": 3.0, "skill_chance": 45,
-            "gif": "https://i.pinimg.com/1200x/d6/7f/1d/d67f1d0f15ed438e283482a4945c88b1.jpg"
+            "gif": "https://i.pinimg.com/1200x/d6/7f/1d/d67f1d0f15ed438e283482a4945c88b1.jpg",
+            "drops": [{"item": "mat_ancient_essence", "chance": 60}, {"item": "mat_spark_crystal", "chance": 60}, {"item": "mat_mercedes_gem", "chance": 4}]
         },
         {
             "name": "Void Devourer", "emoji": "👁️", "hp": 350, "dmg": 28, "credits": 5000,
             "skill_name": "Space Collapse", "skill_dmg_mult": 2.8, "skill_chance": 25,
-            "gif": "https://i.pinimg.com/736x/96/6e/df/966edf1e7132e1ad38cdf4c66661bfbb.jpg"
+            "gif": "https://i.pinimg.com/736x/96/6e/df/966edf1e7132e1ad38cdf4c66661bfbb.jpg",
+            "drops": [{"item": "mat_ancient_essence", "chance": 70}, {"item": "mat_dragon_blood", "chance": 30}, {"item": "mat_mercedes_gem", "chance": 3}]
         }
     ]
 }
