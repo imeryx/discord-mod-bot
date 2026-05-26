@@ -5,7 +5,7 @@ import sqlite3
 import random
 from datetime import datetime, timedelta
 
-from .game_data import FACTIONS, MONSTERS, PLAYER_SKILLS, WEAPONS
+from .game_data import FACTIONS, MONSTERS, PLAYER_SKILLS, WEAPONS, MATERIALS
 
 # --- CẤU HÌNH HỆ THỐNG LÒ RÈN ---
 SELL_PRICES = {"D": 25, "C": 100, "B": 300, "A": 800, "S": 2000, "SS": 5000}
