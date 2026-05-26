@@ -41,7 +41,7 @@ class FactionSelectView(discord.ui.View):
         try:
             cursor.execute('INSERT INTO WistoriaPlayers (user_id, faction, equipped_weapon) VALUES (?, ?, ?)', (user_id, faction_key, starter_weapon))
             
-            # Cố gắng thêm vũ khí với đủ các cột. Nếu lỗi thiếu cột, dùng fallback.
+            # An toàn cho DB cũ chưa update cột mới
             try:
                 cursor.execute('INSERT INTO PlayerInventory (user_id, weapon_key, quantity, weapon_level, enhance_level, weapon_exp) VALUES (?, ?, 1, 1, 1, 0)', (user_id, starter_weapon))
             except sqlite3.OperationalError:
@@ -97,6 +97,7 @@ class CombatView(discord.ui.View):
         
         refine_bonus_dmg = (self.weapon_level - 1) * LVL_BONUS.get(w_tier, 0)
         enhance_bonus_dmg = (self.enhance_level - 1) * ENHANCE_BONUS.get(w_tier, 0)
+        
         self.base_dmg = self.equipped_weapon["dmg"] + refine_bonus_dmg + enhance_bonus_dmg + (self.level * 3)
         
         floor_factor = max(0, self.fighting_floor - 1)
@@ -229,7 +230,7 @@ class CombatView(discord.ui.View):
                     mat_info = MATERIALS.get(mat_key)
                     if mat_info: drop_text += f"\n{mat_info['emoji']} **{mat_info['name']}** x{qty}"
                     
-                    # CÚ PHÁP AN TOÀN CHO MỌI PHIÊN BẢN SQLITE (Chống Crash)
+                    # CÚ PHÁP AN TOÀN CHO MỌI PHIÊN BẢN SQLITE (Chống Crash ON CONFLICT)
                     c.execute("SELECT quantity FROM PlayerMaterials WHERE user_id = ? AND material_key = ?", (self.user.id, mat_key))
                     row = c.fetchone()
                     if row:
@@ -237,7 +238,7 @@ class CombatView(discord.ui.View):
                     else:
                         c.execute("INSERT INTO PlayerMaterials (user_id, material_key, quantity) VALUES (?, ?, ?)", (self.user.id, mat_key, qty))
             except sqlite3.OperationalError:
-                drop_text = "\n\n⚠️ *Lưu ý: Chưa khởi tạo bảng Vật Liệu. Hãy chạy update_materials_db.py*"
+                drop_text = "\n\n⚠️ *Lưu ý: Bảng Vật Liệu chưa tồn tại. Hãy chạy lệnh update_materials_db.py!*"
                 
         c.commit()
         c.close()
@@ -261,7 +262,7 @@ class WistoriaRPG(commands.Cog):
         self.bot = bot
 
     @commands.Cog.listener()
-    async def on_ready(self): print("-> Cog [Wistoria RPG] Loaded (Full Forge System Active)!")
+    async def on_ready(self): print("-> Cog [Wistoria RPG] Loaded (Full Forge System & Crash-Free Active)!")
 
     @app_commands.command(name="start_journey", description="Begin your journey at Rigarden Academy")
     async def start_journey(self, interaction: discord.Interaction):
@@ -286,8 +287,7 @@ class WistoriaRPG(commands.Cog):
             """, (interaction.user.id,)).fetchone()
         except sqlite3.OperationalError:
             conn.close()
-            return await interaction.response.send_message("🛠️ Bot đang cập nhật Cường Hóa. Admin vui lòng chạy lệnh `update_enhance_db.py`!", ephemeral=True)
-            
+            return await interaction.response.send_message("🛠️ Hệ thống đang chờ cập nhật Database. Admin vui lòng chạy `update_enhance_db.py`!", ephemeral=True)
         conn.close()
         
         if not player: return await interaction.response.send_message("⚠️ You haven't enrolled yet!", ephemeral=True)
@@ -342,8 +342,8 @@ class WistoriaRPG(commands.Cog):
             """, (user_id,)).fetchone()
         except sqlite3.OperationalError:
             conn.close()
-            return await interaction.response.send_message("🛠️ Bot đang cập nhật Cường Hóa. Admin vui lòng chạy lệnh `update_enhance_db.py`!", ephemeral=True)
-        
+            return await interaction.response.send_message("🛠️ Hệ thống đang chờ cập nhật. Admin vui lòng chạy `update_enhance_db.py`!", ephemeral=True)
+            
         if not player:
             conn.close()
             return await interaction.response.send_message("⚠️ Use `/start_journey` first.", ephemeral=True)
@@ -378,33 +378,6 @@ class WistoriaRPG(commands.Cog):
         combat_view = CombatView(interaction.user, player_data, monster)
         await interaction.response.send_message(embed=combat_view.build_embed(), view=combat_view)
 
-    @app_commands.command(name="materials", description="Open your bag of crafting materials")
-    async def materials(self, interaction: discord.Interaction):
-        user_id = interaction.user.id
-        conn = sqlite3.connect('bot_database.db')
-        cursor = conn.cursor()
-        
-        try:
-            cursor.execute("SELECT material_key, quantity FROM PlayerMaterials WHERE user_id = ? AND quantity > 0", (user_id,))
-            items = cursor.fetchall()
-        except sqlite3.OperationalError:
-            conn.close()
-            return await interaction.response.send_message("🛠️ Chưa có túi vật liệu! Admin vui lòng chạy `update_materials_db.py`.", ephemeral=True)
-        conn.close()
-        
-        if not items: return await interaction.response.send_message("🕸️ Your material bag is completely empty. Go to the `/dungeon` to hunt monsters!", ephemeral=True)
-            
-        embed = discord.Embed(title=f"🎒 {interaction.user.display_name}'s Material Bag", color=discord.Color.teal())
-        desc = ""
-        for mat_key, qty in items:
-            m_data = MATERIALS.get(mat_key)
-            if not m_data: continue
-            desc += f"{m_data['emoji']} **{m_data['name']}** (x{qty})\n*Tier: {m_data['tier']} | ID: `{mat_key}`*\n\n"
-            
-        embed.description = desc
-        embed.set_footer(text="Materials are used to /enhance your weapons!")
-        await interaction.response.send_message(embed=embed)
-
     @app_commands.command(name="daily", description="Claim your daily allowance of 1000 Credits")
     async def daily(self, interaction: discord.Interaction):
         user_id = interaction.user.id
@@ -437,6 +410,33 @@ class WistoriaRPG(commands.Cog):
         conn.commit()
         conn.close()
         await interaction.response.send_message(f"🎁 **Daily Reward Claimed!** You received **1000 ✨ Credits**.\nYour balance is now: **{current_credits + 1000} ✨**")
+
+    @app_commands.command(name="materials", description="Open your bag of crafting materials")
+    async def materials(self, interaction: discord.Interaction):
+        user_id = interaction.user.id
+        conn = sqlite3.connect('bot_database.db')
+        cursor = conn.cursor()
+        
+        try:
+            cursor.execute("SELECT material_key, quantity FROM PlayerMaterials WHERE user_id = ? AND quantity > 0", (user_id,))
+            items = cursor.fetchall()
+        except sqlite3.OperationalError:
+            conn.close()
+            return await interaction.response.send_message("🛠️ Chưa có túi vật liệu! Admin vui lòng chạy `update_materials_db.py`.", ephemeral=True)
+        conn.close()
+        
+        if not items: return await interaction.response.send_message("🕸️ Your material bag is completely empty. Go to the `/dungeon` to hunt monsters!", ephemeral=True)
+            
+        embed = discord.Embed(title=f"🎒 {interaction.user.display_name}'s Material Bag", color=discord.Color.teal())
+        desc = ""
+        for mat_key, qty in items:
+            m_data = MATERIALS.get(mat_key)
+            if not m_data: continue
+            desc += f"{m_data['emoji']} **{m_data['name']}** (x{qty})\n*Tier: {m_data['tier']} | ID: `{mat_key}`*\n\n"
+            
+        embed.description = desc
+        embed.set_footer(text="Materials are used to /enhance your weapons!")
+        await interaction.response.send_message(embed=embed)
 
     @app_commands.command(name="sell", description="Sell unused weapons for Credits")
     @app_commands.describe(weapon_id="The ID of the weapon to sell", quantity="Amount to sell (Default: 1)")
@@ -498,7 +498,7 @@ class WistoriaRPG(commands.Cog):
             items = cursor.fetchall()
         except sqlite3.OperationalError:
             conn.close()
-            return await interaction.response.send_message("🛠️ Bot đang cập nhật Cường Hóa. Admin vui lòng chạy lệnh `update_enhance_db.py`!", ephemeral=True)
+            return await interaction.response.send_message("🛠️ Hệ thống đang chờ cập nhật. Admin vui lòng chạy lệnh `update_enhance_db.py`!", ephemeral=True)
             
         conn.close()
         
@@ -521,7 +521,8 @@ class WistoriaRPG(commands.Cog):
             
         embed.description = desc
         embed.set_footer(text="Use /equip to change, /upgrade to Refine (+), /enhance to Level up!")
-        # Lỗi cũ của bạn nằm ở dòng này (set_message). Đã được sửa lại thành send_message:
+        
+        # Đã Sửa lỗi "set_message" chết chóc thành "send_message"
         await interaction.response.send_message(embed=embed)
 
     @app_commands.command(name="equip", description="Equip a weapon from your inventory")
@@ -588,7 +589,7 @@ class WistoriaRPG(commands.Cog):
         new_credits = current_credits - cost
         cursor.execute("UPDATE WistoriaPlayers SET credits = ? WHERE user_id = ?", (new_credits, user_id))
         
-        # CÚ PHÁP AN TOÀN CHO MỌI PHIÊN BẢN SQLITE
+        # Sửa logic Gacha thành an toàn 100% (Không dùng ON CONFLICT)
         try:
             cursor.execute("SELECT quantity FROM PlayerInventory WHERE user_id = ? AND weapon_key = ?", (user_id, pulled_weapon_key))
             row = cursor.fetchone()
@@ -598,7 +599,7 @@ class WistoriaRPG(commands.Cog):
                 cursor.execute("INSERT INTO PlayerInventory (user_id, weapon_key, quantity, weapon_level, enhance_level, weapon_exp) VALUES (?, ?, 1, 1, 1, 0)", (user_id, pulled_weapon_key))
         except sqlite3.OperationalError:
             conn.close()
-            return await interaction.response.send_message("🛠️ Bot đang cập nhật Cường Hóa. Admin vui lòng chạy lệnh `update_enhance_db.py`!", ephemeral=True)
+            return await interaction.response.send_message("🛠️ Bot đang cập nhật. Admin vui lòng chạy lệnh `update_enhance_db.py`!", ephemeral=True)
             
         conn.commit()
         conn.close()
