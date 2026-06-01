@@ -302,6 +302,7 @@ class WistoriaRPG(commands.Cog):
         enhance_level = enhance_level if enhance_level is not None else 1
         
         faction_info = FACTIONS.get(faction_key, {"name": "Unknown", "emoji": "❓"})
+        combat_power = max_hp + max_mana + (total_dmg * 10) + (level * 50)
         max_hp = faction_info["base_hp"] + (level * faction_info["hp_growth"])
         max_mana = faction_info["base_mana"] + (level * faction_info["mana_growth"])
         
@@ -317,6 +318,7 @@ class WistoriaRPG(commands.Cog):
         
         embed = discord.Embed(title=f"🎓 Student Profile | {interaction.user.display_name}", color=discord.Color.blue())
         if interaction.user.avatar: embed.set_thumbnail(url=interaction.user.avatar.url)
+        embed.description = f"🔥 **Combat Power (CP): {combat_power:,}**"
         embed.add_field(name="Magic Faction", value=f"{faction_info['emoji']} **{faction_info['name']}**", inline=True)
         embed.add_field(name="Level", value=f"**Lv. {level}**", inline=True)
         embed.add_field(name="Credits", value=f"✨ **{credits:,}**", inline=True)
@@ -862,6 +864,88 @@ class WistoriaRPG(commands.Cog):
         embed.set_footer(text="To upgrade this weapon, obtain duplicates and use /upgrade!")
         await interaction.response.send_message(embed=embed)
 
+    # ========================================================
+    # LỆNH MỚI: /TOP (BẢNG XẾP HẠNG LỰC CHIẾN)
+    # ========================================================
+    @app_commands.command(name="top", description="View the Academy's Combat Power Leaderboard")
+    async def top(self, interaction: discord.Interaction):
+        conn = sqlite3.connect('bot_database.db')
+        cursor = conn.cursor()
+        
+        # Lấy toàn bộ dữ liệu của tất cả người chơi trong Server
+        try:
+            cursor.execute("""
+                SELECT p.user_id, p.level, p.faction, p.equipped_weapon, i.weapon_level, i.enhance_level
+                FROM WistoriaPlayers p
+                LEFT JOIN PlayerInventory i ON p.user_id = i.user_id AND p.equipped_weapon = i.weapon_key
+            """)
+            all_players = cursor.fetchall()
+        except sqlite3.OperationalError:
+            conn.close()
+            return await interaction.response.send_message("🛠️ Database is updating.", ephemeral=True)
+        conn.close()
 
+        if not all_players:
+            return await interaction.response.send_message("📭 The academy has no students yet!", ephemeral=True)
+
+        leaderboard = []
+        
+        # Vòng lặp tính Lực chiến cho từng người
+        for p_data in all_players:
+            u_id, level, faction_key, w_key, w_lvl, e_lvl = p_data
+            w_lvl = w_lvl if w_lvl is not None else 1
+            e_lvl = e_lvl if e_lvl is not None else 1
+            w_key = w_key if w_key else ("w_dull_blade" if faction_key == "Physical" else "w_broken_branch")
+            
+            # Tính chỉ số cơ bản
+            faction_info = FACTIONS.get(faction_key, {"base_hp": 100, "hp_growth": 10, "base_mana": 50, "mana_growth": 5, "emoji": "❓"})
+            max_hp = faction_info["base_hp"] + (level * faction_info["hp_growth"])
+            max_mana = faction_info["base_mana"] + (level * faction_info["mana_growth"])
+            
+            # Tính sát thương vũ khí
+            equipped_weapon = WEAPONS.get(w_key, WEAPONS["w_broken_branch"])
+            w_tier = equipped_weapon["tier"]
+            refine_bonus = (w_lvl - 1) * LVL_BONUS.get(w_tier, 0)
+            enhance_bonus = (e_lvl - 1) * ENHANCE_BONUS.get(w_tier, 0)
+            total_dmg = equipped_weapon["dmg"] + refine_bonus + enhance_bonus + (level * 3)
+            
+            # Công thức Lực chiến
+            cp = max_hp + max_mana + (total_dmg * 10) + (level * 50)
+            
+            leaderboard.append({
+                "user_id": u_id,
+                "cp": cp,
+                "level": level,
+                "faction": faction_info['emoji']
+            })
+
+        # Sắp xếp danh sách từ cao xuống thấp theo CP
+        leaderboard.sort(key=lambda x: x["cp"], reverse=True)
+        
+        # Chỉ lấy Top 10
+        top_10 = leaderboard[:10]
+        
+        embed = discord.Embed(
+            title="🏆 RIGARDEN ACADEMY LEADERBOARD",
+            description="The most powerful mages based on Combat Power (CP):",
+            color=discord.Color.gold()
+        )
+        
+        medals = ["🥇", "🥈", "🥉"]
+        for index, player in enumerate(top_10):
+            # Cố gắng lấy tên thật của user trên Discord
+            user = interaction.guild.get_member(player['user_id'])
+            username = user.display_name if user else f"Student ID: {player['user_id']}"
+            
+            rank_icon = medals[index] if index < 3 else f"**#{index + 1}**"
+            
+            embed.add_field(
+                name=f"{rank_icon} {username} {player['faction']}", 
+                value=f"🔥 **CP: {player['cp']:,}** | Lv.{player['level']}", 
+                inline=False
+            )
+            
+        embed.set_thumbnail(url="https://images4.alphacoders.com/136/thumbbig-1368886.webp")
+        await interaction.response.send_message(embed=embed)
 async def setup(bot):
     await bot.add_cog(WistoriaRPG(bot))
