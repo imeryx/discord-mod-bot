@@ -621,10 +621,38 @@ class WistoriaRPG(commands.Cog):
     # ========================================================
     @app_commands.command(name="enhance", description="Level up a weapon using materials (Lv.1 to Lv.50)")
     @app_commands.describe(weapon_id="ID of weapon", material_id="ID of material", quantity="How many materials to consume")
+    @app_commands.command(name="enhance", description="Level up a weapon using materials (Lv.1 to Lv.50)")
+    @app_commands.describe(weapon_id="ID of weapon", material_id="ID of material", quantity="How many materials to consume")
     async def enhance(self, interaction: discord.Interaction, weapon_id: str, material_id: str, quantity: int = 1):
         if quantity < 1: return await interaction.response.send_message("❌ Quantity must be at least 1.", ephemeral=True)
         if weapon_id not in WEAPONS: return await interaction.response.send_message("❌ Invalid weapon ID.", ephemeral=True)
         if material_id not in MATERIALS: return await interaction.response.send_message("❌ Invalid material ID.", ephemeral=True)
+
+        # Lấy thông tin vũ khí để kiểm tra hệ phái
+        target_weapon = WEAPONS[weapon_id]
+        faction = target_weapon.get("faction", "None")
+        
+        # --- BỘ LỌC NGUYÊN LIỆU HỆ PHÁI ---
+        COMMON_MATS = ["mat_iron_ore", "mat_magic_dust", "mat_ancient_essence", "mat_dragon_blood", "mat_mercedes_gem"]
+        FACTION_MATS = {
+            "Fire": "mat_flame_ember",
+            "Ice": "mat_frost_shard",
+            "Wind": "mat_gale_feather",
+            "Earth": "mat_terra_pebble",
+            "Lightning": "mat_spark_crystal",
+            "Physical": "mat_honing_stone"
+        }
+        
+        allowed_specific_mat = FACTION_MATS.get(faction)
+        
+        # Kiểm tra xem nguyên liệu đưa vào có hợp lệ không
+        if material_id not in COMMON_MATS and material_id != allowed_specific_mat:
+            error_msg = f"⚠️ **Incompatible Material!** The {target_weapon['name']} is a **{faction}** weapon."
+            if allowed_specific_mat:
+                error_msg += f" You can only use Common/Epic materials or **{MATERIALS[allowed_specific_mat]['name']}**."
+            else:
+                error_msg += " You can only use Common/Epic materials."
+            return await interaction.response.send_message(error_msg, ephemeral=True)
 
         user_id = interaction.user.id
         conn = sqlite3.connect('bot_database.db')
@@ -671,7 +699,6 @@ class WistoriaRPG(commands.Cog):
         mat_exp = MATERIALS[material_id].get('exp_value', 10) * quantity
         new_exp = w_exp + mat_exp
         new_lvl = e_lvl
-        target_weapon = WEAPONS[weapon_id]
         tier = target_weapon["tier"]
 
         level_up_occurred = False
@@ -771,12 +798,15 @@ class WistoriaRPG(commands.Cog):
 
     @app_commands.command(name="weapon", description="Inspect the detailed statistics of a specific weapon")
     @app_commands.describe(weapon_id="The ID of the weapon (e.g., w_iron_sword, w_broken_branch)")
+    @app_commands.command(name="weapon", description="Inspect the detailed statistics of a specific weapon")
+    @app_commands.describe(weapon_id="The ID of the weapon (e.g., w_iron_sword, w_broken_branch)")
     async def weapon(self, interaction: discord.Interaction, weapon_id: str):
         if weapon_id not in WEAPONS:
             return await interaction.response.send_message("❌ Invalid weapon ID! Ensure it starts with `w_`.", ephemeral=True)
             
         target_weapon = WEAPONS[weapon_id]
         tier = target_weapon["tier"]
+        faction = target_weapon["faction"]
         
         conn = sqlite3.connect('bot_database.db')
         cursor = conn.cursor()
@@ -810,8 +840,27 @@ class WistoriaRPG(commands.Cog):
             color=tier_colors.get(tier, 0xffffff)
         )
         
-        embed.add_field(name="Classification", value=f"⭐ **Tier:** {tier}\n🔮 **Faction:** {target_weapon['faction']}", inline=True)
+        embed.add_field(name="Classification", value=f"⭐ **Tier:** {tier}\n🔮 **Faction:** {faction}", inline=True)
         embed.add_field(name="Combat Power", value=f"⚔️ **Total DMG:** {display_dmg}\n📈 **+Lv Growth:** +{ENHANCE_BONUS[tier]} DMG\n💥 **+Rank Growth:** +{LVL_BONUS[tier]} DMG", inline=True)
+        
+        # --- BẢNG TRA CỨU NGUYÊN LIỆU ĐỘC QUYỀN ---
+        elemental_mats = {
+            "Fire": "🔥 Flame Ember (`mat_flame_ember`)",
+            "Ice": "❄️ Frost Shard (`mat_frost_shard`)",
+            "Wind": "🪶 Gale Feather (`mat_gale_feather`)",
+            "Earth": "🧱 Tectonic Pebble (`mat_terra_pebble`)",
+            "Lightning": "⚡ Spark Crystal (`mat_spark_crystal`)",
+            "Physical": "🧫 Honing Stone (`mat_honing_stone`)"
+        }
+        req_mat = elemental_mats.get(faction, "Bất kỳ Mảnh nguyên tố nào")
+        
+        recipe_text = (
+            f"🔸 **Common (All):** 🪨 Iron Ore, ✨ Magic Dust\n"
+            f"🔸 **Specific ({faction}):** {req_mat}\n"
+            f"🔸 **Epic/Mythic:** 🧪 Ancient Essence, 🩸 Dragon Blood"
+        )
+        embed.add_field(name="🧪 Enhancement Recipe", value=recipe_text, inline=False)
+        
         embed.add_field(name="Economy", value=f"🛠️ **Next Refine Cost:** {next_upgrade_cost}\n💰 **Recycle Value:** {SELL_PRICES.get(tier, 25)} Credits", inline=False)
         
         embed.set_footer(text="To upgrade this weapon, obtain duplicates and use /upgrade!")
