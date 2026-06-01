@@ -619,8 +619,7 @@ class WistoriaRPG(commands.Cog):
     # ========================================================
     # LỆNH MỚI: /ENHANCE (CƯỜNG HÓA BẰNG VẬT LIỆU)
     # ========================================================
-    @app_commands.command(name="enhance", description="Level up a weapon using materials (Lv.1 to Lv.50)")
-    @app_commands.describe(weapon_id="ID of weapon", material_id="ID of material", quantity="How many materials to consume")
+
     @app_commands.command(name="enhance", description="Level up a weapon using materials (Lv.1 to Lv.50)")
     @app_commands.describe(weapon_id="ID of weapon", material_id="ID of material", quantity="How many materials to consume")
     async def enhance(self, interaction: discord.Interaction, weapon_id: str, material_id: str, quantity: int = 1):
