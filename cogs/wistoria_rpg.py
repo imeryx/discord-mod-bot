@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 
 from .game_data import FACTIONS, MONSTERS, PLAYER_SKILLS, WEAPONS, MATERIALS
 
-# --- CẤU HÌNH HỆ THỐNG LÒ RÈN ---
+# --- FORGE SYSTEM CONFIGURATION ---
 SELL_PRICES = {"D": 25, "C": 100, "B": 300, "A": 800, "S": 2000, "SS": 5000}
 LVL_BONUS = {"D": 2, "C": 5, "B": 10, "A": 22, "S": 50, "SS": 110}
 UPGRADE_BASE_COSTS = {"D": 200, "C": 500, "B": 1200, "A": 3000, "S": 7000, "SS": 15000}
@@ -95,7 +95,7 @@ class QuestView(discord.ui.View):
         super().__init__(timeout=120)
         self.user = user
         
-        btn = discord.ui.Button(label="Nhận thưởng (Claim)", emoji="🎁", style=discord.ButtonStyle.success, disabled=not can_claim)
+        btn = discord.ui.Button(label="Claim Rewards", emoji="🎁", style=discord.ButtonStyle.success, disabled=not can_claim)
         btn.callback = self.claim_callback
         self.add_item(btn)
 
@@ -119,7 +119,7 @@ class QuestView(discord.ui.View):
         
         if d_p >= 3 and c_d == 0:
             earned_credits += 300
-            rewards.append("⚔️ **Thợ Săn:** +300 ✨ Credits")
+            rewards.append("⚔️ **Hunter:** +300 ✨ Credits")
             cursor.execute("UPDATE DailyQuests SET claimed_dungeon = 1 WHERE user_id = ?", (self.user.id,))
             
         if s_d >= 1 and c_s == 0:
@@ -130,7 +130,7 @@ class QuestView(discord.ui.View):
             
         if f_d >= 1 and c_f == 0:
             earned_credits += 150
-            rewards.append("🔨 **Lò Rèn:** +150 ✨ Credits & 1x Magic Dust")
+            rewards.append("🔨 **Blacksmith:** +150 ✨ Credits & 1x Magic Dust")
             try:
                 cursor.execute("SELECT quantity FROM PlayerMaterials WHERE user_id = ? AND material_key = 'mat_magic_dust'", (self.user.id,))
                 if cursor.fetchone(): cursor.execute("UPDATE PlayerMaterials SET quantity = quantity + 1 WHERE user_id = ? AND material_key = 'mat_magic_dust'", (self.user.id,))
@@ -141,7 +141,7 @@ class QuestView(discord.ui.View):
 
         if not rewards:
             conn.close()
-            return await interaction.response.send_message("⚠️ Có lỗi xảy ra hoặc bạn đã nhận hết quà!", ephemeral=True)
+            return await interaction.response.send_message("⚠️ An error occurred, or you have already claimed all available rewards!", ephemeral=True)
             
         cursor.execute("UPDATE WistoriaPlayers SET credits = credits + ?, exp = exp + ? WHERE user_id = ?", (earned_credits, earned_exp, self.user.id))
         
@@ -154,7 +154,7 @@ class QuestView(discord.ui.View):
                 p_exp -= p_lvl * 100
                 p_lvl += 1
                 p_floor += 1
-                lvl_up_text = f"\n🎉 **LEVEL UP!** Bạn đã lên Cấp {p_lvl}!"
+                lvl_up_text = f"\n🎉 **LEVEL UP!** You reached Level {p_lvl}!"
             else:
                 break
         cursor.execute("UPDATE WistoriaPlayers SET level = ?, exp = ?, current_floor = ? WHERE user_id = ?", (p_lvl, p_exp, p_floor, self.user.id))
@@ -162,9 +162,9 @@ class QuestView(discord.ui.View):
         conn.commit()
         conn.close()
         
-        embed = discord.Embed(title="🎁 Nhận thưởng Thành công!", description="\n".join(rewards) + lvl_up_text, color=discord.Color.green())
+        embed = discord.Embed(title="🎁 Rewards Claimed Successfully!", description="\n".join(rewards) + lvl_up_text, color=discord.Color.green())
         self.clear_items()
-        self.add_item(discord.ui.Button(label="Đã nhận hết", style=discord.ButtonStyle.secondary, disabled=True))
+        self.add_item(discord.ui.Button(label="Fully Claimed", style=discord.ButtonStyle.secondary, disabled=True))
         await interaction.response.edit_message(view=self)
         await interaction.followup.send(embed=embed, ephemeral=True)
 
@@ -195,7 +195,7 @@ class CombatView(discord.ui.View):
         self.monster_dmg = int(monster["dmg"] * (1 + floor_factor * 0.04))
         
         weapon_display = f"{self.equipped_weapon['name']} (Lv.{self.enhance_level} | +{self.weapon_level})"
-        self.combat_log = f"Trang bị: **{weapon_display}**! The battle begins.\n"
+        self.combat_log = f"Weapon: **{weapon_display}**! The battle begins.\n"
         self.skill_cooldowns = {}
         self.update_buttons()
 
@@ -321,7 +321,7 @@ class CombatView(discord.ui.View):
                     if cursor.fetchone(): cursor.execute("UPDATE PlayerMaterials SET quantity = quantity + ? WHERE user_id = ? AND material_key = ?", (qty, self.user.id, mat_key))
                     else: cursor.execute("INSERT INTO PlayerMaterials (user_id, material_key, quantity) VALUES (?, ?, ?)", (self.user.id, mat_key, qty))
             except sqlite3.OperationalError:
-                drop_text = "\n\n⚠️ *Lưu ý: Bảng Vật Liệu chưa tồn tại.*"
+                drop_text = "\n\n⚠️ *Note: Materials table does not exist.*"
                 
         conn.commit()
         conn.close()
@@ -388,7 +388,7 @@ class WistoriaRPG(commands.Cog):
             """, (interaction.user.id,)).fetchone()
         except sqlite3.OperationalError:
             conn.close()
-            return await interaction.response.send_message("🛠️ Hệ thống đang chờ cập nhật Database.", ephemeral=True)
+            return await interaction.response.send_message("🛠️ Database is updating.", ephemeral=True)
         conn.close()
         
         if not player: return await interaction.response.send_message("⚠️ You haven't enrolled yet!", ephemeral=True)
@@ -496,16 +496,16 @@ class WistoriaRPG(commands.Cog):
             
         d_p, s_d, f_d, c_d, c_s, c_f = q_data
         
-        embed = discord.Embed(title="📜 Sổ Tay Nhiệm Vụ Hàng Ngày", description="Hoàn thành các mục tiêu dưới đây để nhận thưởng!", color=discord.Color.orange())
+        embed = discord.Embed(title="📜 Daily Quest Board", description="Complete the objectives below to earn rewards!", color=discord.Color.orange())
         
         def format_quest(name, current, required, claimed, reward_text):
-            status = "✅ Đã nhận" if claimed else ("🟢 Sẵn sàng" if current >= required else "🔴 Chưa xong")
+            status = "✅ Claimed" if claimed else ("🟢 Ready" if current >= required else "🔴 Incomplete")
             progress = min(current, required)
-            return f"**{name}** [{progress}/{required}] - {status}\n*↳ Thưởng: {reward_text}*"
+            return f"**{name}** [{progress}/{required}] - {status}\n*↳ Reward: {reward_text}*"
 
-        embed.add_field(name="Nhiệm vụ 1", value=format_quest("⚔️ Thợ Săn Chăm Chỉ (Đi Dungeon)", d_p, 3, c_d, "300 ✨"), inline=False)
-        embed.add_field(name="Nhiệm vụ 2", value=format_quest("🎰 Kẻ Nghiện Gacha (Triệu hồi 1 lần)", s_d, 1, c_s, "150 ✨, 50 EXP"), inline=False)
-        embed.add_field(name="Nhiệm vụ 3", value=format_quest("🔨 Bậc Thầy Lò Rèn (Cường hóa/Đột phá)", f_d, 1, c_f, "150 ✨, 1x Magic Dust"), inline=False)
+        embed.add_field(name="Quest 1", value=format_quest("⚔️ Diligent Hunter (Clear Dungeon)", d_p, 3, c_d, "300 ✨"), inline=False)
+        embed.add_field(name="Quest 2", value=format_quest("🎰 Gacha Addict (Summon once)", s_d, 1, c_s, "150 ✨, 50 EXP"), inline=False)
+        embed.add_field(name="Quest 3", value=format_quest("🔨 Master Blacksmith (Enhance/Upgrade)", f_d, 1, c_f, "150 ✨, 1x Magic Dust"), inline=False)
         
         can_claim = (d_p >= 3 and not c_d) or (s_d >= 1 and not c_s) or (f_d >= 1 and not c_f)
         await interaction.response.send_message(embed=embed, view=QuestView(interaction.user, can_claim))
@@ -526,7 +526,7 @@ class WistoriaRPG(commands.Cog):
             """, (user_id,)).fetchone()
         except sqlite3.OperationalError:
             conn.close()
-            return await interaction.response.send_message("🛠️ Hệ thống đang chờ cập nhật.", ephemeral=True)
+            return await interaction.response.send_message("🛠️ System is waiting for an update.", ephemeral=True)
             
         if not player:
             conn.close()
@@ -573,7 +573,7 @@ class WistoriaRPG(commands.Cog):
             player = cursor.fetchone()
         except sqlite3.OperationalError:
             conn.close()
-            return await interaction.response.send_message("🛠️ Database is updating. Please ask the admin to run `update_daily_db.py`.", ephemeral=True)
+            return await interaction.response.send_message("🛠️ Database is updating.", ephemeral=True)
             
         if not player:
             conn.close()
@@ -606,7 +606,7 @@ class WistoriaRPG(commands.Cog):
             items = cursor.fetchall()
         except sqlite3.OperationalError:
             conn.close()
-            return await interaction.response.send_message("🛠️ Chưa có túi vật liệu! Admin vui lòng chạy `update_materials_db.py`.", ephemeral=True)
+            return await interaction.response.send_message("🛠️ Material bag does not exist!", ephemeral=True)
         conn.close()
         
         if not items: return await interaction.response.send_message("🕸️ Your material bag is completely empty. Go to the `/dungeon` to hunt monsters!", ephemeral=True)
@@ -680,7 +680,7 @@ class WistoriaRPG(commands.Cog):
             items = cursor.fetchall()
         except sqlite3.OperationalError:
             conn.close()
-            return await interaction.response.send_message("🛠️ Hệ thống đang chờ cập nhật.", ephemeral=True)
+            return await interaction.response.send_message("🛠️ System is waiting for an update.", ephemeral=True)
             
         conn.close()
         
@@ -775,7 +775,7 @@ class WistoriaRPG(commands.Cog):
             else: cursor.execute("INSERT INTO PlayerInventory (user_id, weapon_key, quantity, weapon_level, enhance_level, weapon_exp) VALUES (?, ?, 1, 1, 1, 0)", (user_id, pulled_weapon_key))
         except sqlite3.OperationalError:
             conn.close()
-            return await interaction.response.send_message("🛠️ Bot đang cập nhật.", ephemeral=True)
+            return await interaction.response.send_message("🛠️ Bot is updating.", ephemeral=True)
             
         conn.commit()
         conn.close()
@@ -818,7 +818,7 @@ class WistoriaRPG(commands.Cog):
             mat = cursor.fetchone()
         except sqlite3.OperationalError:
             conn.close()
-            return await interaction.response.send_message("🛠️ Chưa có túi vật liệu!", ephemeral=True)
+            return await interaction.response.send_message("🛠️ Material bag does not exist!", ephemeral=True)
             
         if not mat or mat[0] < quantity:
             conn.close()
@@ -829,7 +829,7 @@ class WistoriaRPG(commands.Cog):
             wep = cursor.fetchone()
         except sqlite3.OperationalError:
             conn.close()
-            return await interaction.response.send_message("🛠️ Bot đang cập nhật hệ thống Cường Hóa.", ephemeral=True)
+            return await interaction.response.send_message("🛠️ Enhancement system is updating.", ephemeral=True)
             
         if not wep:
             conn.close()
@@ -956,7 +956,7 @@ class WistoriaRPG(commands.Cog):
             owned_data = cursor.fetchone()
         except sqlite3.OperationalError:
             conn.close()
-            return await interaction.response.send_message("🛠️ Bot đang cập nhật Cường Hóa.", ephemeral=True)
+            return await interaction.response.send_message("🛠️ Enhancement system is updating.", ephemeral=True)
         conn.close()
         
         if owned_data:
@@ -979,7 +979,7 @@ class WistoriaRPG(commands.Cog):
         embed.add_field(name="Combat Power", value=f"⚔️ **Total DMG:** {display_dmg}\n📈 **+Lv Growth:** +{ENHANCE_BONUS[tier]} DMG\n💥 **+Rank Growth:** +{LVL_BONUS[tier]} DMG", inline=True)
         
         elemental_mats = {"Fire": "🔥 Flame Ember (`mat_flame_ember`)", "Ice": "❄️ Frost Shard (`mat_frost_shard`)", "Wind": "🪶 Gale Feather (`mat_gale_feather`)", "Earth": "🧱 Tectonic Pebble (`mat_terra_pebble`)", "Lightning": "⚡ Spark Crystal (`mat_spark_crystal`)", "Physical": "🧫 Honing Stone (`mat_honing_stone`)"}
-        req_mat = elemental_mats.get(faction, "Bất kỳ Mảnh nguyên tố nào")
+        req_mat = elemental_mats.get(faction, "Any Elemental Shard")
         
         recipe_text = f"🔸 **Common (All):** 🪨 Iron Ore, ✨ Magic Dust\n🔸 **Specific ({faction}):** {req_mat}\n🔸 **Epic/Mythic:** 🧪 Ancient Essence, 🩸 Dragon Blood"
         embed.add_field(name="🧪 Enhancement Recipe", value=recipe_text, inline=False)
