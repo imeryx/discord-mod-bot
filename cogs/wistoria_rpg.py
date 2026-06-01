@@ -322,7 +322,7 @@ class WistoriaRPG(commands.Cog):
         if interaction.user.avatar: embed.set_thumbnail(url=interaction.user.avatar.url)
         
         # HIỂN THỊ LỰC CHIẾN LÊN ĐẦU EMBED
-        embed.description = f"🔥 **LỰC CHIẾN (CP): {combat_power:,}**"
+        embed.description = f"🔥 **Combat Power (CP): {combat_power:,}**"
         
         embed.add_field(name="Magic Faction", value=f"{faction_info['emoji']} **{faction_info.get('name', 'Unknown')}**", inline=True)
         embed.add_field(name="Level", value=f"**Lv. {level}**", inline=True)
