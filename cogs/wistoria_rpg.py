@@ -302,9 +302,8 @@ class WistoriaRPG(commands.Cog):
         enhance_level = enhance_level if enhance_level is not None else 1
         
         faction_info = FACTIONS.get(faction_key, {"name": "Unknown", "emoji": "❓"})
-        combat_power = max_hp + max_mana + (total_dmg * 10) + (level * 50)
-        max_hp = faction_info["base_hp"] + (level * faction_info["hp_growth"])
-        max_mana = faction_info["base_mana"] + (level * faction_info["mana_growth"])
+        max_hp = faction_info.get("base_hp", 100) + (level * faction_info.get("hp_growth", 10))
+        max_mana = faction_info.get("base_mana", 50) + (level * faction_info.get("mana_growth", 5))
         
         equipped_weapon = WEAPONS.get(weapon_key, WEAPONS["w_broken_branch"])
         w_tier = equipped_weapon["tier"]
@@ -313,13 +312,19 @@ class WistoriaRPG(commands.Cog):
         enhance_bonus_dmg = (enhance_level - 1) * ENHANCE_BONUS.get(w_tier, 0)
         total_dmg = equipped_weapon["dmg"] + refine_bonus_dmg + enhance_bonus_dmg + (level * 3)
         
+        # --- TÍNH TOÁN LỰC CHIẾN (CP) ---
+        combat_power = max_hp + max_mana + (total_dmg * 10) + (level * 50)
+        
         skills_text = "".join([f"{sk['emoji']} **{sk['name']}** ({sk.get('mana_cost', 0)}MP{' | '+str(sk['cooldown'])+'T CD' if 'cooldown' in sk else ''})\n*↳ {sk['desc']}*\n\n" for sk in PLAYER_SKILLS.get(faction_key, []) if level >= sk["unlock_level"]])
         exp_needed = level * 100 
         
         embed = discord.Embed(title=f"🎓 Student Profile | {interaction.user.display_name}", color=discord.Color.blue())
         if interaction.user.avatar: embed.set_thumbnail(url=interaction.user.avatar.url)
-        embed.description = f"🔥 **Combat Power (CP): {combat_power:,}**"
-        embed.add_field(name="Magic Faction", value=f"{faction_info['emoji']} **{faction_info['name']}**", inline=True)
+        
+        # HIỂN THỊ LỰC CHIẾN LÊN ĐẦU EMBED
+        embed.description = f"🔥 **LỰC CHIẾN (CP): {combat_power:,}**"
+        
+        embed.add_field(name="Magic Faction", value=f"{faction_info['emoji']} **{faction_info.get('name', 'Unknown')}**", inline=True)
         embed.add_field(name="Level", value=f"**Lv. {level}**", inline=True)
         embed.add_field(name="Credits", value=f"✨ **{credits:,}**", inline=True)
         embed.add_field(name="Combat Stats", value=f"💖 **HP:** {max_hp}\n💧 **MP:** {max_mana}\n⚔️ **Total DMG:** {total_dmg}", inline=True)
