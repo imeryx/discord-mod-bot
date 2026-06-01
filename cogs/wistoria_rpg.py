@@ -616,10 +616,9 @@ class WistoriaRPG(commands.Cog):
         await interaction.response.send_message(embed=embed)
 
 
-    # ========================================================
+# ========================================================
     # LỆNH MỚI: /ENHANCE (CƯỜNG HÓA BẰNG VẬT LIỆU)
     # ========================================================
-
     @app_commands.command(name="enhance", description="Level up a weapon using materials (Lv.1 to Lv.50)")
     @app_commands.describe(weapon_id="ID of weapon", material_id="ID of material", quantity="How many materials to consume")
     async def enhance(self, interaction: discord.Interaction, weapon_id: str, material_id: str, quantity: int = 1):
@@ -797,15 +796,13 @@ class WistoriaRPG(commands.Cog):
 
     @app_commands.command(name="weapon", description="Inspect the detailed statistics of a specific weapon")
     @app_commands.describe(weapon_id="The ID of the weapon (e.g., w_iron_sword, w_broken_branch)")
-    @app_commands.command(name="weapon", description="Inspect the detailed statistics of a specific weapon")
-    @app_commands.describe(weapon_id="The ID of the weapon (e.g., w_iron_sword, w_broken_branch)")
     async def weapon(self, interaction: discord.Interaction, weapon_id: str):
         if weapon_id not in WEAPONS:
             return await interaction.response.send_message("❌ Invalid weapon ID! Ensure it starts with `w_`.", ephemeral=True)
             
         target_weapon = WEAPONS[weapon_id]
         tier = target_weapon["tier"]
-        faction = target_weapon["faction"]
+        faction = target_weapon.get("faction", "None")
         
         conn = sqlite3.connect('bot_database.db')
         cursor = conn.cursor()
