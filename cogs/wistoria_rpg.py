@@ -431,7 +431,7 @@ class WistoriaRPG(commands.Cog):
     )
     async def admin_give(self, interaction: discord.Interaction, credits: int = 0, exp: int = 0, material_id: str = None, weapon_id: str = None, quantity: int = 1):
         # THAY DÃY SỐ NÀY BẰNG ID DISCORD CỦA BẠN!
-        DEVELOPER_ID = 123456789012345678 
+        DEVELOPER_ID = 834054385746575380 
         
         if interaction.user.id != DEVELOPER_ID:
             return await interaction.response.send_message("⛔ **Access Denied:** This command is restricted to Developers only!", ephemeral=True)
