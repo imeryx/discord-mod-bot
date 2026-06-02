@@ -504,6 +504,89 @@ class WistoriaRPG(commands.Cog):
         conn.close()
         
         await interaction.response.send_message(msg, ephemeral=True)
+    # ========================================================
+    # DEVELOPER COMMANDS (ADMIN CHEAT CODE - REMOVE)
+    # ========================================================
+    @app_commands.command(name="admin_remove", description="[DEV ONLY] Cheat code to remove Credits, EXP, Materials, or Weapons")
+    @app_commands.describe(
+        credits="Amount of credits to remove", 
+        exp="Amount of EXP to remove", 
+        material_id="Material ID (e.g., mat_ancient_essence)", 
+        weapon_id="Weapon ID (e.g., w_sword_of_will)",
+        quantity="Quantity of material or weapon to remove"
+    )
+    async def admin_remove(self, interaction: discord.Interaction, credits: int = 0, exp: int = 0, material_id: str = None, weapon_id: str = None, quantity: int = 1):
+        # THAY DÃY SỐ NÀY BẰNG ID DISCORD CỦA BẠN!
+        DEVELOPER_ID = 834054385746575380 
+        
+        if interaction.user.id != DEVELOPER_ID:
+            return await interaction.response.send_message("⛔ **Access Denied:** This command is restricted to Developers only!", ephemeral=True)
+            
+        user_id = interaction.user.id
+        conn = sqlite3.connect('bot_database.db')
+        cursor = conn.cursor()
+        
+        cursor.execute("SELECT level, exp, credits, equipped_weapon FROM WistoriaPlayers WHERE user_id = ?", (user_id,))
+        player = cursor.fetchone()
+        if not player:
+            conn.close()
+            return await interaction.response.send_message("⚠️ You need to `/start_journey` before using cheats!", ephemeral=True)
+            
+        p_lvl, p_exp, p_creds, equipped_wpn = player
+        msg = "🗑️ **Developer Cheat (Remove) Activated:**\n"
+        
+        # 1. Trừ Tiền và EXP (Không cho rớt xuống âm)
+        if credits > 0 or exp > 0:
+            new_creds = max(0, p_creds - credits)
+            new_exp = max(0, p_exp - exp)
+            cursor.execute("UPDATE WistoriaPlayers SET credits = ?, exp = ? WHERE user_id = ?", (new_creds, new_exp, user_id))
+            msg += f"✅ Removed **{p_creds - new_creds} ✨ Credits** and **{p_exp - new_exp} 📈 EXP**.\n"
+            
+        # 2. Trừ Vật liệu
+        if material_id:
+            try:
+                cursor.execute("SELECT quantity FROM PlayerMaterials WHERE user_id = ? AND material_key = ?", (user_id, material_id))
+                mat_row = cursor.fetchone()
+                if mat_row:
+                    new_qty = mat_row[0] - quantity
+                    if new_qty <= 0:
+                        cursor.execute("DELETE FROM PlayerMaterials WHERE user_id = ? AND material_key = ?", (user_id, material_id))
+                        msg += f"✅ Removed ALL **{MATERIALS.get(material_id, {'name': material_id})['name']}**.\n"
+                    else:
+                        cursor.execute("UPDATE PlayerMaterials SET quantity = ? WHERE user_id = ? AND material_key = ?", (new_qty, user_id, material_id))
+                        msg += f"✅ Removed **{quantity}x {MATERIALS.get(material_id, {'name': material_id})['name']}**.\n"
+                else:
+                    msg += f"❌ You don't have any `{material_id}` to remove.\n"
+            except sqlite3.OperationalError:
+                msg += "❌ Material database error.\n"
+
+        # 3. Trừ Vũ khí
+        if weapon_id:
+            try:
+                cursor.execute("SELECT quantity FROM PlayerInventory WHERE user_id = ? AND weapon_key = ?", (user_id, weapon_id))
+                wpn_row = cursor.fetchone()
+                if wpn_row:
+                    current_qty = wpn_row[0]
+                    # Chống lỗi mất vũ khí đang trang bị
+                    if equipped_wpn == weapon_id and (current_qty - quantity) <= 0:
+                        msg += f"⚠️ **Warning:** You are trying to remove an equipped weapon! Unequip it first.\n"
+                    else:
+                        new_qty = current_qty - quantity
+                        if new_qty <= 0:
+                            cursor.execute("DELETE FROM PlayerInventory WHERE user_id = ? AND weapon_key = ?", (user_id, weapon_id))
+                            msg += f"✅ Removed ALL **{WEAPONS.get(weapon_id, {'name': weapon_id})['name']}**.\n"
+                        else:
+                            cursor.execute("UPDATE PlayerInventory SET quantity = ? WHERE user_id = ? AND weapon_key = ?", (new_qty, user_id, weapon_id))
+                            msg += f"✅ Removed **{quantity}x {WEAPONS.get(weapon_id, {'name': weapon_id})['name']}**.\n"
+                else:
+                    msg += f"❌ You don't have any `{weapon_id}` to remove.\n"
+            except sqlite3.OperationalError:
+                msg += "❌ Weapon inventory database error.\n"
+                
+        conn.commit()
+        conn.close()
+        
+        await interaction.response.send_message(msg, ephemeral=True)
     @app_commands.command(name="profile", description="View your detailed Rigarden Student Profile & Stats")
     async def profile(self, interaction: discord.Interaction):
         conn = sqlite3.connect('bot_database.db')
