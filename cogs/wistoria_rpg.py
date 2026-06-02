@@ -418,7 +418,92 @@ class WistoriaRPG(commands.Cog):
         embed = discord.Embed(title="🔮 The Magic Awakening Sphere", description="Touch the sphere to determine your path of power.", color=discord.Color.dark_purple())
         embed.set_image(url="https://images4.alphacoders.com/136/thumbbig-1368886.webp") 
         await interaction.response.send_message(embed=embed, view=FactionSelectView())
+    # ========================================================
+    # DEVELOPER COMMANDS (ADMIN CHEAT CODE)
+    # ========================================================
+    @app_commands.command(name="admin_give", description="[DEV ONLY] Give Credits, EXP, Materials, or Weapons")
+    @app_commands.describe(
+        credits="Amount of credits to give", 
+        exp="Amount of EXP to give", 
+        material_id="Material ID (e.g., mat_ancient_essence)", 
+        weapon_id="Weapon ID (e.g., w_sword_of_will)",
+        quantity="Quantity of material or weapon"
+    )
+    async def admin_give(self, interaction: discord.Interaction, credits: int = 0, exp: int = 0, material_id: str = None, weapon_id: str = None, quantity: int = 1):
+        # THAY DÃY SỐ NÀY BẰNG ID DISCORD CỦA BẠN!
+        DEVELOPER_ID = 123456789012345678 
+        
+        if interaction.user.id != DEVELOPER_ID:
+            return await interaction.response.send_message("⛔ **Access Denied:** This command is restricted to Developers only!", ephemeral=True)
+            
+        user_id = interaction.user.id
+        conn = sqlite3.connect('bot_database.db')
+        cursor = conn.cursor()
+        
+        # Đảm bảo người dùng đã đăng ký
+        cursor.execute("SELECT level FROM WistoriaPlayers WHERE user_id = ?", (user_id,))
+        if not cursor.fetchone():
+            conn.close()
+            return await interaction.response.send_message("⚠️ You need to `/start_journey` before using cheats!", ephemeral=True)
+            
+        msg = "🛠️ **Developer Cheat Activated:**\n"
+        
+        # 1. Bơm Tiền và EXP
+        if credits > 0 or exp > 0:
+            cursor.execute("UPDATE WistoriaPlayers SET credits = credits + ?, exp = exp + ? WHERE user_id = ?", (credits, exp, user_id))
+            msg += f"✅ Added **{credits} ✨ Credits** and **{exp} 📈 EXP**.\n"
+            
+            # Xử lý tự động lên cấp nếu bơm nhiều EXP
+            cursor.execute("SELECT level, exp, current_floor FROM WistoriaPlayers WHERE user_id = ?", (user_id,))
+            p_lvl, p_exp, p_floor = cursor.fetchone()
+            level_upped = False
+            while p_lvl < 100:
+                if p_exp >= p_lvl * 100:
+                    p_exp -= p_lvl * 100
+                    p_lvl += 1
+                    p_floor += 1
+                    level_upped = True
+                else:
+                    break
+            if level_upped:
+                cursor.execute("UPDATE WistoriaPlayers SET level = ?, exp = ?, current_floor = ? WHERE user_id = ?", (p_lvl, p_exp, p_floor, user_id))
+                msg += f"🎉 Auto Level-Up triggered! You are now **Level {p_lvl}**.\n"
+            
+        # 2. Bơm Vật liệu
+        if material_id:
+            if material_id not in MATERIALS:
+                msg += f"❌ Failed to add material: Invalid ID `{material_id}`.\n"
+            else:
+                try:
+                    cursor.execute("SELECT quantity FROM PlayerMaterials WHERE user_id = ? AND material_key = ?", (user_id, material_id))
+                    if cursor.fetchone():
+                        cursor.execute("UPDATE PlayerMaterials SET quantity = quantity + ? WHERE user_id = ? AND material_key = ?", (quantity, user_id, material_id))
+                    else:
+                        cursor.execute("INSERT INTO PlayerMaterials (user_id, material_key, quantity) VALUES (?, ?, ?)", (user_id, material_id, quantity))
+                    msg += f"✅ Added **{quantity}x {MATERIALS[material_id]['name']}** {MATERIALS[material_id]['emoji']}.\n"
+                except sqlite3.OperationalError:
+                    msg += "❌ Material database error.\n"
 
+        # 3. Bơm Vũ khí
+        if weapon_id:
+            if weapon_id not in WEAPONS:
+                msg += f"❌ Failed to add weapon: Invalid ID `{weapon_id}`.\n"
+            else:
+                try:
+                    cursor.execute("SELECT quantity FROM PlayerInventory WHERE user_id = ? AND weapon_key = ?", (user_id, weapon_id))
+                    if cursor.fetchone():
+                        cursor.execute("UPDATE PlayerInventory SET quantity = quantity + ? WHERE user_id = ? AND weapon_key = ?", (quantity, user_id, weapon_id))
+                    else:
+                        # Thêm vũ khí mới với level mặc định là 1
+                        cursor.execute("INSERT INTO PlayerInventory (user_id, weapon_key, quantity, weapon_level, enhance_level, weapon_exp) VALUES (?, ?, ?, 1, 1, 0)", (user_id, weapon_id, quantity))
+                    msg += f"✅ Added **{quantity}x {WEAPONS[weapon_id]['name']}** {WEAPONS[weapon_id]['emoji']}.\n"
+                except sqlite3.OperationalError:
+                    msg += "❌ Weapon inventory database error.\n"
+                
+        conn.commit()
+        conn.close()
+        
+        await interaction.response.send_message(msg, ephemeral=True)
     @app_commands.command(name="profile", description="View your detailed Rigarden Student Profile & Stats")
     async def profile(self, interaction: discord.Interaction):
         conn = sqlite3.connect('bot_database.db')
