@@ -38,7 +38,7 @@ FACTIONS = {
 PLAYER_SKILLS = {
     "Ice": [
         {"id": "sk_ice_pierce", "name": "Ice Pierce", "emoji": "🗡️", "unlock_level": 1, "mana_cost": 25, "cooldown": 1, "type": "attack", "dmg_multiplier": 1.5, "desc": "Fire a sharp ice spear."},
-        {"id": "sk_frost_shield", "name": "Frost Armor", "emoji": "🛡️", "unlock_level": 5, "mana_cost": 40, "cooldown": 3, "type": "shield", "effect_multiplier": 0.4, "desc": "Create an ice shield absorbing damage equal to 40% of Max HP."},
+        {"id": "sk_frost_shield", "name": "Frost Armor", "emoji": "🛡️", "unlock_level": 5, "mana_cost": 40, "cooldown": 3, "type": "shield", "effect_multiplier": 0.2, "desc": "Create an ice shield absorbing damage equal to 20% of Max HP."},
         {"id": "sk_absolute_zero", "name": "Absolute Zero", "emoji": "❄️", "unlock_level": 15, "mana_cost": 65, "cooldown": 4, "type": "attack", "dmg_multiplier": 3.0, "desc": "Freeze everything. Massive AoE damage."}
     ],
     "Fire": [
@@ -53,7 +53,7 @@ PLAYER_SKILLS = {
     ],
     "Earth": [
         {"id": "sk_rock_throw", "name": "Rock Throw", "emoji": "🪨", "unlock_level": 1, "mana_cost": 20, "cooldown": 1, "type": "attack", "dmg_multiplier": 1.5, "desc": "Hurl a heavy boulder at the target."},
-        {"id": "sk_terra_armor", "name": "Terra Aegis", "emoji": "🧱", "unlock_level": 5, "mana_cost": 35, "cooldown": 3, "type": "shield", "effect_multiplier": 0.5, "desc": "Cover yourself in stone, gaining a shield equal to 50% of Max HP."},
+        {"id": "sk_terra_armor", "name": "Terra Aegis", "emoji": "🧱", "unlock_level": 5, "mana_cost": 35, "cooldown": 3, "type": "shield", "effect_multiplier": 0.2, "desc": "Cover yourself in stone, gaining a shield equal to 20% of Max HP."},
         {"id": "sk_nature_blessing", "name": "Nature's Blessing", "emoji": "🌿", "unlock_level": 15, "mana_cost": 50, "cooldown": 4, "type": "heal", "effect_multiplier": 0.3, "desc": "Absorb earth essence, restoring 30% Max HP."}
     ],
     "Lightning": [
@@ -63,7 +63,7 @@ PLAYER_SKILLS = {
     ],
     "Physical": [
         {"id": "sk_heavy_strike", "name": "Heavy Strike", "emoji": "⚔️", "unlock_level": 1, "mana_cost": 0, "cooldown": 1, "type": "attack", "dmg_multiplier": 1.4, "desc": "A powerful and heavy sword slash."},
-        {"id": "sk_parry", "name": "Parry & Counter", "emoji": "🛡️", "unlock_level": 5, "mana_cost": 0, "cooldown": 3, "type": "shield", "effect_multiplier": 0.3, "desc": "Deflect incoming attacks, gaining a 30% Max HP shield."},
+        {"id": "sk_parry", "name": "Parry & Counter", "emoji": "🛡️", "unlock_level": 5, "mana_cost": 0, "cooldown": 3, "type": "shield", "effect_multiplier": 0.2, "desc": "Deflect incoming attacks, gaining a 20% Max HP shield."},
         {"id": "sk_wis_strike", "name": "Wistoria Strike", "emoji": "✨", "unlock_level": 15, "mana_cost": 0, "cooldown": 4, "type": "attack", "dmg_multiplier": 2.8, "desc": "The ultimate demon-slaying sword skill."}
     ]
 }
@@ -120,14 +120,14 @@ MONSTERS = {
         {"name": "Mana-sucking Bat", "emoji": "🦇", "hp": 90, "dmg": 18, "credits": 150, "skill_name": "Vampiric Drain", "skill_dmg_mult": 2.0, "skill_chance": 35, "gif": "https://i.pinimg.com/736x/d6/1b/26/d61b261d214ce33559a73ff7d3f7436f.jpg", "drops": [{"item": "mat_magic_dust", "chance": 50}, {"item": "mat_gale_feather", "chance": 30}, {"item": "mat_ancient_essence", "chance": 5}]},
         {"name": "Headless Knight", "emoji": "🛡️", "hp": 130, "dmg": 16, "credits": 250, "skill_name": "Decapitate", "skill_dmg_mult": 2.5, "skill_chance": 25, "gif": "https://i.pinimg.com/736x/72/54/3a/72543a52bba0ef42a3d53753a1e935dc.jpg", "drops": [{"item": "mat_honing_stone", "chance": 40}, {"item": "mat_iron_ore", "chance": 40}, {"item": "mat_ancient_essence", "chance": 8}]},
         {"name": "Fire Salamander", "emoji": "🦎", "hp": 110, "dmg": 20, "credits": 200, "skill_name": "Flame Breath", "skill_dmg_mult": 2.2, "skill_chance": 30, "gif": "https://i.pinimg.com/736x/b8/fb/41/b8fb415501e7ca551ec46d29473c3982.jpg", "drops": [{"item": "mat_flame_ember", "chance": 40}, {"item": "mat_dragon_blood", "chance": 5}]},
-        {"name": "Shadow Assassin", "emoji": "🥷", "hp": 80, "dmg": 25, "credits": 280, "skill_name": "Fatal Backstab", "skill_dmg_mult": 3.0, "skill_chance": 20, "gif": "https://i.pinimg.com/1200x/02/74/f7/0274f7942246e7d73ce4549b01d9bf78.jpg", "drops": [{"item": "mat_honing_stone", "chance": 30}, {"item": "mat_spark_crystal", "chance": 30}, {"item": "mat_ancient_essence", "chance": 10}]}
+        {"name": "Shadow Assassin", "emoji": "🥷", "hp": 80, "dmg": 25, "credits": 280, "skill_name": "Fatal Backstab", "skill_dmg_mult": 3.0, "skill_chance": 20, "pierce_shield": True, "gif": "https://i.pinimg.com/1200x/02/74/f7/0274f7942246e7d73ce4549b01d9bf78.jpg", "drops": [{"item": "mat_honing_stone", "chance": 30}, {"item": "mat_spark_crystal", "chance": 30}, {"item": "mat_ancient_essence", "chance": 10}]}
     ],
     "51-100": [
-        {"name": "Supreme Dark Mage", "emoji": "🧙‍♂️", "hp": 180, "dmg": 35, "credits": 1000, "skill_name": "Death Ray", "skill_dmg_mult": 2.5, "skill_chance": 40, "gif": "https://i.pinimg.com/736x/3b/c9/7c/3bc97cd91d03d3ce5b65fd5127c40d0a.jpg", "drops": [{"item": "mat_ancient_essence", "chance": 50}, {"item": "mat_magic_dust", "chance": 80}, {"item": "mat_mercedes_gem", "chance": 2}]},
+        {"name": "Supreme Dark Mage", "emoji": "🧙‍♂️", "hp": 180, "dmg": 35, "credits": 1000, "skill_name": "Death Ray", "skill_dmg_mult": 2.5, "skill_chance": 40, "pierce_shield": True, "gif": "https://i.pinimg.com/736x/3b/c9/7c/3bc97cd91d03d3ce5b65fd5127c40d0a.jpg", "drops": [{"item": "mat_ancient_essence", "chance": 50}, {"item": "mat_magic_dust", "chance": 80}, {"item": "mat_mercedes_gem", "chance": 2}]},
         {"name": "Eternal Ice Dragon", "emoji": "🐉", "hp": 300, "dmg": 25, "credits": 2500, "skill_name": "Absolute Frost Breath", "skill_dmg_mult": 2.0, "skill_chance": 35, "gif": "https://i.pinimg.com/736x/eb/c4/c9/ebc4c95467b106876092a62837df0707.jpg", "drops": [{"item": "mat_dragon_blood", "chance": 50}, {"item": "mat_frost_shard", "chance": 70}, {"item": "mat_mercedes_gem", "chance": 3}]},
         {"name": "Abyssal Behemoth", "emoji": "👹", "hp": 400, "dmg": 20, "credits": 3500, "skill_name": "World Shatter", "skill_dmg_mult": 2.2, "skill_chance": 30, "gif": "https://i.pinimg.com/1200x/6d/ed/ba/6dedbaa8274d716e1d184c7b06793e45.jpg", "drops": [{"item": "mat_terra_pebble", "chance": 80}, {"item": "mat_dragon_blood", "chance": 40}, {"item": "mat_mercedes_gem", "chance": 2}]},
         {"name": "Fallen Vander", "emoji": "👑", "hp": 250, "dmg": 30, "credits": 4000, "skill_name": "Forbidden Magic", "skill_dmg_mult": 3.0, "skill_chance": 45, "gif": "https://i.pinimg.com/1200x/d6/7f/1d/d67f1d0f15ed438e283482a4945c88b1.jpg", "drops": [{"item": "mat_ancient_essence", "chance": 60}, {"item": "mat_spark_crystal", "chance": 60}, {"item": "mat_mercedes_gem", "chance": 4}]},
-        {"name": "Void Devourer", "emoji": "👁️", "hp": 350, "dmg": 28, "credits": 5000, "skill_name": "Space Collapse", "skill_dmg_mult": 2.8, "skill_chance": 25, "gif": "https://i.pinimg.com/736x/96/6e/df/966edf1e7132e1ad38cdf4c66661bfbb.jpg", "drops": [{"item": "mat_ancient_essence", "chance": 70}, {"item": "mat_dragon_blood", "chance": 30}, {"item": "mat_mercedes_gem", "chance": 3}]}
+        {"name": "Void Devourer", "emoji": "👁️", "hp": 350, "dmg": 28, "credits": 5000, "skill_name": "Space Collapse", "skill_dmg_mult": 2.8, "skill_chance": 25, "pierce_shield": True, "gif": "https://i.pinimg.com/736x/96/6e/df/966edf1e7132e1ad38cdf4c66661bfbb.jpg", "drops": [{"item": "mat_ancient_essence", "chance": 70}, {"item": "mat_dragon_blood", "chance": 30}, {"item": "mat_mercedes_gem", "chance": 3}]}
     ]
 }
 

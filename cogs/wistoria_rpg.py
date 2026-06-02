@@ -278,7 +278,7 @@ class CombatView(discord.ui.View):
                 self.combat_log += f"{skill['emoji']} You cast **{skill['name']}**, restoring **{heal_amount} HP**!\n"
             elif skill_type == "shield":
                 shield_amount = int(self.max_hp * skill.get("effect_multiplier", 0.4))
-                self.shield += shield_amount
+                self.shield = max(self.shield, shield_amount)
                 self.combat_log += f"{skill['emoji']} You cast **{skill['name']}**, gaining a **{shield_amount} DMG Shield**! 🛡️\n"
             else:
                 player_dmg = int(self.base_dmg * skill.get("dmg_multiplier", 1.5))
@@ -287,31 +287,48 @@ class CombatView(discord.ui.View):
 
         if self.monster_hp <= 0: return await self.victory(interaction)
 
+ # ===== LƯỢT CỦA QUÁI VẬT =====
         m_base_dmg = self.monster_dmg 
+        is_pierce = False # Biến kiểm tra xem đòn này có Xuyên Khiên không
+        
         if random.randint(1, 100) <= self.monster.get("skill_chance", 0):
             actual_m_dmg = int(m_base_dmg * self.monster.get("skill_dmg_mult", 1.5))
-            self.combat_log += f"⚠️ **{self.monster['name']}** used **{self.monster.get('skill_name')}** for **{actual_m_dmg} DMG**! "
+            skill_name = self.monster.get('skill_name')
+            
+            # Kiểm tra xem quái có thuộc tính Phá Khiên không
+            if self.monster.get("pierce_shield"):
+                is_pierce = True
+                self.combat_log += f"⚠️ **{self.monster['name']}** used **{skill_name}** (PIERCE) dealing **{actual_m_dmg} DMG**! "
+            else:
+                self.combat_log += f"⚠️ **{self.monster['name']}** used **{skill_name}** dealing **{actual_m_dmg} DMG**! "
         else:
             actual_m_dmg = m_base_dmg
-            self.combat_log += f"👺 **{self.monster['name']}** attacked for **{actual_m_dmg} DMG**! "
+            self.combat_log += f"👺 **{self.monster['name']}** attacked dealing **{actual_m_dmg} DMG**! "
 
-        if self.shield > 0:
-            absorbed = min(self.shield, actual_m_dmg)
-            self.shield -= absorbed
-            actual_m_dmg -= absorbed
-            self.combat_log += f"*(Shield absorbed {absorbed} DMG)*\n"
+        # ===== TÍNH TOÁN SÁT THƯƠNG =====
+        if is_pierce:
+            self.combat_log += "\n*(Shield Ignored!)*\n"
+            self.current_hp = max(0, self.current_hp - actual_m_dmg)
         else:
-            self.combat_log += "\n"
+            # Nếu không xuyên khiên thì trừ vào Shield như bình thường
+            if self.shield > 0:
+                absorbed = min(self.shield, actual_m_dmg)
+                self.shield -= absorbed
+                actual_m_dmg -= absorbed
+                self.combat_log += f"*(Shield absorbed {absorbed} DMG)*\n"
+            else:
+                self.combat_log += "\n"
+                
+            self.current_hp = max(0, self.current_hp - actual_m_dmg)
 
-        self.current_hp = max(0, self.current_hp - actual_m_dmg)
         if self.current_hp <= 0: return await self.defeat(interaction)
 
+        # GIẢM COOLDOWN MỖI LƯỢT CỦA NGƯỜI CHƠI
         for sk_id in list(self.skill_cooldowns.keys()):
             if self.skill_cooldowns[sk_id] > 0: self.skill_cooldowns[sk_id] -= 1
 
         self.update_buttons()
         await interaction.response.edit_message(embed=self.build_embed(), view=self)
-
     async def victory(self, interaction):
         check_and_update_quest(self.user.id, 'dungeon')
         earned_exp = random.randint(30, 60)
