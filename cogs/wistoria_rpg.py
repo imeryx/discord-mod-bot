@@ -181,6 +181,7 @@ class CombatView(discord.ui.View):
         self.current_hp = self.max_hp
         self.max_mana = faction_data.get("base_mana", 50) + (self.level * faction_data.get("mana_growth", 5))
         self.current_mana = self.max_mana
+        self.shield = 0 
         
         self.equipped_weapon = WEAPONS.get(self.weapon_key, WEAPONS["w_broken_branch"])
         w_tier = self.equipped_weapon["tier"]
@@ -203,7 +204,11 @@ class CombatView(discord.ui.View):
         embed = discord.Embed(title=f"⚔️ Dungeon - Floor {self.fighting_floor}", description=f"📜 **Combat Log:**\n> {self.combat_log}", color=discord.Color.dark_red())
         embed.add_field(name=f"{self.monster['emoji']} {self.monster['name']}", value=f"HP: `{generate_bar(self.monster_hp, self.monster_max_hp, '🟥')}` {self.monster_hp}/{self.monster_max_hp}", inline=False)
         faction_name = FACTIONS[self.faction_key]['name']
-        embed.add_field(name=f"🎓 {self.user.display_name} (Lv.{self.level} {faction_name})", value=f"HP: `{generate_bar(self.current_hp, self.max_hp, '🟩')}` {self.current_hp}/{self.max_hp}\nMP: `{generate_bar(self.current_mana, self.max_mana, '🟦')}` {self.current_mana}/{self.max_mana}", inline=False)
+        
+        hp_display = f"{self.current_hp}/{self.max_hp}"
+        if self.shield > 0: hp_display += f" (+{self.shield} 🛡️)"
+        
+        embed.add_field(name=f"🎓 {self.user.display_name} (Lv.{self.level} {faction_name})", value=f"HP: `{generate_bar(self.current_hp, self.max_hp, '🟩')}` {hp_display}\nMP: `{generate_bar(self.current_mana, self.max_mana, '🟦')}` {self.current_mana}/{self.max_mana}", inline=False)
         embed.set_thumbnail(url=self.monster["gif"])
         return embed
 
@@ -218,7 +223,7 @@ class CombatView(discord.ui.View):
             cd_remaining = self.skill_cooldowns.get(skill["id"], 0)
             label = skill["name"]
             disabled = False
-            style = discord.ButtonStyle.primary
+            style = discord.ButtonStyle.primary if skill.get("type", "attack") == "attack" else discord.ButtonStyle.success
             
             if skill["mana_cost"] > 0:
                 label += f" ({skill['mana_cost']}MP)"
@@ -251,31 +256,52 @@ class CombatView(discord.ui.View):
     async def process_turn(self, interaction, action: str, skill=None):
         if interaction.user.id != self.user.id: return await interaction.response.send_message("⚠️ This is not your battle!", ephemeral=True)
         self.combat_log = "" 
-        player_dmg = 0
         
         if action == "attack":
             player_dmg = self.base_dmg
             mana_regen = 15 if self.max_mana > 0 else 0
             self.current_mana = min(self.max_mana, self.current_mana + mana_regen)
+            self.monster_hp = max(0, self.monster_hp - player_dmg)
             self.combat_log += f"🗡️ You used Basic Attack dealing **{player_dmg} DMG**! Recovered {mana_regen} MP.\n"
         elif action == "skill":
             if skill["mana_cost"] > 0 and self.current_mana < skill["mana_cost"]: return await interaction.response.send_message("❌ Not enough Mana!", ephemeral=True)
             if self.skill_cooldowns.get(skill["id"], 0) > 0: return await interaction.response.send_message("❌ Skill is on cooldown!", ephemeral=True)
+            
             if skill["mana_cost"] > 0: self.current_mana -= skill["mana_cost"]
             if "cooldown" in skill: self.skill_cooldowns[skill["id"]] = skill["cooldown"] + 1
-            player_dmg = int(self.base_dmg * skill["dmg_multiplier"])
-            self.combat_log += f"{skill['emoji']} You cast **{skill['name']}** dealing **{player_dmg} DMG**!\n"
+            
+            skill_type = skill.get("type", "attack")
+            
+            if skill_type == "heal":
+                heal_amount = int(self.max_hp * skill.get("effect_multiplier", 0.3))
+                self.current_hp = min(self.max_hp, self.current_hp + heal_amount)
+                self.combat_log += f"{skill['emoji']} You cast **{skill['name']}**, restoring **{heal_amount} HP**!\n"
+            elif skill_type == "shield":
+                shield_amount = int(self.max_hp * skill.get("effect_multiplier", 0.4))
+                self.shield += shield_amount
+                self.combat_log += f"{skill['emoji']} You cast **{skill['name']}**, gaining a **{shield_amount} DMG Shield**! 🛡️\n"
+            else:
+                player_dmg = int(self.base_dmg * skill.get("dmg_multiplier", 1.5))
+                self.monster_hp = max(0, self.monster_hp - player_dmg)
+                self.combat_log += f"{skill['emoji']} You cast **{skill['name']}** dealing **{player_dmg} DMG**!\n"
 
-        self.monster_hp = max(0, self.monster_hp - player_dmg)
         if self.monster_hp <= 0: return await self.victory(interaction)
 
         m_base_dmg = self.monster_dmg 
         if random.randint(1, 100) <= self.monster.get("skill_chance", 0):
             actual_m_dmg = int(m_base_dmg * self.monster.get("skill_dmg_mult", 1.5))
-            self.combat_log += f"⚠️ **{self.monster['name']}** used **{self.monster.get('skill_name')}** dealing **{actual_m_dmg} DMG**!"
+            self.combat_log += f"⚠️ **{self.monster['name']}** used **{self.monster.get('skill_name')}** for **{actual_m_dmg} DMG**! "
         else:
             actual_m_dmg = m_base_dmg
-            self.combat_log += f"👺 **{self.monster['name']}** attacked dealing **{actual_m_dmg} DMG**!"
+            self.combat_log += f"👺 **{self.monster['name']}** attacked for **{actual_m_dmg} DMG**! "
+
+        if self.shield > 0:
+            absorbed = min(self.shield, actual_m_dmg)
+            self.shield -= absorbed
+            actual_m_dmg -= absorbed
+            self.combat_log += f"*(Shield absorbed {absorbed} DMG)*\n"
+        else:
+            self.combat_log += "\n"
 
         self.current_hp = max(0, self.current_hp - actual_m_dmg)
         if self.current_hp <= 0: return await self.defeat(interaction)
