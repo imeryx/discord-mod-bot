@@ -179,7 +179,9 @@ class CombatView(discord.ui.View):
         faction_data = FACTIONS[self.faction_key]
         self.max_hp = faction_data.get("base_hp", 100) + (self.level * faction_data.get("hp_growth", 10))
         self.current_hp = self.max_hp
-        self.max_mana = faction_data.get("base_mana", 50) + (self.level * faction_data.get("mana_growth", 5))
+        
+        # CÔNG THỨC MANA MỚI (Capping Hard)
+        self.max_mana = faction_data.get("base_mana", 50) + int(self.level * faction_data.get("mana_growth", 5) * 0.25)
         self.current_mana = self.max_mana
         self.shield = 0 
         
@@ -188,12 +190,18 @@ class CombatView(discord.ui.View):
         
         refine_bonus_dmg = (self.weapon_level - 1) * LVL_BONUS.get(w_tier, 0)
         enhance_bonus_dmg = (self.enhance_level - 1) * ENHANCE_BONUS.get(w_tier, 0)
-        self.base_dmg = self.equipped_weapon["dmg"] + refine_bonus_dmg + enhance_bonus_dmg + (self.level * 3)
         
+        # CÔNG THỨC DAMAGE MỚI (Base Level = * 0.8)
+        self.base_dmg = self.equipped_weapon["dmg"] + refine_bonus_dmg + enhance_bonus_dmg + int(self.level * 0.8)
+        
+        # CÔNG THỨC LŨY THỪA CHO QUÁI VẬT TẦNG CAO
         floor_factor = max(0, self.fighting_floor - 1)
-        self.monster_max_hp = int(monster["hp"] * (1 + floor_factor * 0.08))
+        hp_multiplier = 1 + (floor_factor * 0.12) + ((floor_factor ** 1.3) * 0.02)
+        dmg_multiplier = 1 + (floor_factor * 0.08) + ((floor_factor ** 1.2) * 0.01)
+
+        self.monster_max_hp = int(monster["hp"] * hp_multiplier)
         self.monster_hp = self.monster_max_hp
-        self.monster_dmg = int(monster["dmg"] * (1 + floor_factor * 0.04))
+        self.monster_dmg = int(monster["dmg"] * dmg_multiplier)
         
         weapon_display = f"{self.equipped_weapon['name']} (Lv.{self.enhance_level} | +{self.weapon_level})"
         self.combat_log = f"Weapon: **{weapon_display}**! The battle begins.\n"
@@ -287,15 +295,13 @@ class CombatView(discord.ui.View):
 
         if self.monster_hp <= 0: return await self.victory(interaction)
 
- # ===== LƯỢT CỦA QUÁI VẬT =====
         m_base_dmg = self.monster_dmg 
-        is_pierce = False # Biến kiểm tra xem đòn này có Xuyên Khiên không
+        is_pierce = False 
         
         if random.randint(1, 100) <= self.monster.get("skill_chance", 0):
             actual_m_dmg = int(m_base_dmg * self.monster.get("skill_dmg_mult", 1.5))
             skill_name = self.monster.get('skill_name')
             
-            # Kiểm tra xem quái có thuộc tính Phá Khiên không
             if self.monster.get("pierce_shield"):
                 is_pierce = True
                 self.combat_log += f"⚠️ **{self.monster['name']}** used **{skill_name}** (PIERCE) dealing **{actual_m_dmg} DMG**! "
@@ -305,12 +311,10 @@ class CombatView(discord.ui.View):
             actual_m_dmg = m_base_dmg
             self.combat_log += f"👺 **{self.monster['name']}** attacked dealing **{actual_m_dmg} DMG**! "
 
-        # ===== TÍNH TOÁN SÁT THƯƠNG =====
         if is_pierce:
             self.combat_log += "\n*(Shield Ignored!)*\n"
             self.current_hp = max(0, self.current_hp - actual_m_dmg)
         else:
-            # Nếu không xuyên khiên thì trừ vào Shield như bình thường
             if self.shield > 0:
                 absorbed = min(self.shield, actual_m_dmg)
                 self.shield -= absorbed
@@ -323,12 +327,12 @@ class CombatView(discord.ui.View):
 
         if self.current_hp <= 0: return await self.defeat(interaction)
 
-        # GIẢM COOLDOWN MỖI LƯỢT CỦA NGƯỜI CHƠI
         for sk_id in list(self.skill_cooldowns.keys()):
             if self.skill_cooldowns[sk_id] > 0: self.skill_cooldowns[sk_id] -= 1
 
         self.update_buttons()
         await interaction.response.edit_message(embed=self.build_embed(), view=self)
+
     async def victory(self, interaction):
         check_and_update_quest(self.user.id, 'dungeon')
         earned_exp = random.randint(30, 60)
@@ -418,175 +422,7 @@ class WistoriaRPG(commands.Cog):
         embed = discord.Embed(title="🔮 The Magic Awakening Sphere", description="Touch the sphere to determine your path of power.", color=discord.Color.dark_purple())
         embed.set_image(url="https://images4.alphacoders.com/136/thumbbig-1368886.webp") 
         await interaction.response.send_message(embed=embed, view=FactionSelectView())
-    # ========================================================
-    # DEVELOPER COMMANDS (ADMIN CHEAT CODE)
-    # ========================================================
-    @app_commands.command(name="admin_give", description="[DEV ONLY] Give Credits, EXP, Materials, or Weapons")
-    @app_commands.describe(
-        credits="Amount of credits to give", 
-        exp="Amount of EXP to give", 
-        material_id="Material ID (e.g., mat_ancient_essence)", 
-        weapon_id="Weapon ID (e.g., w_sword_of_will)",
-        quantity="Quantity of material or weapon"
-    )
-    async def admin_give(self, interaction: discord.Interaction, credits: int = 0, exp: int = 0, material_id: str = None, weapon_id: str = None, quantity: int = 1):
-        # THAY DÃY SỐ NÀY BẰNG ID DISCORD CỦA BẠN!
-        DEVELOPER_ID = 834054385746575380 
-        
-        if interaction.user.id != DEVELOPER_ID:
-            return await interaction.response.send_message("⛔ **Access Denied:** This command is restricted to Developers only!", ephemeral=True)
-            
-        user_id = interaction.user.id
-        conn = sqlite3.connect('bot_database.db')
-        cursor = conn.cursor()
-        
-        # Đảm bảo người dùng đã đăng ký
-        cursor.execute("SELECT level FROM WistoriaPlayers WHERE user_id = ?", (user_id,))
-        if not cursor.fetchone():
-            conn.close()
-            return await interaction.response.send_message("⚠️ You need to `/start_journey` before using cheats!", ephemeral=True)
-            
-        msg = "🛠️ **Developer Cheat Activated:**\n"
-        
-        # 1. Bơm Tiền và EXP
-        if credits > 0 or exp > 0:
-            cursor.execute("UPDATE WistoriaPlayers SET credits = credits + ?, exp = exp + ? WHERE user_id = ?", (credits, exp, user_id))
-            msg += f"✅ Added **{credits} ✨ Credits** and **{exp} 📈 EXP**.\n"
-            
-            # Xử lý tự động lên cấp nếu bơm nhiều EXP
-            cursor.execute("SELECT level, exp, current_floor FROM WistoriaPlayers WHERE user_id = ?", (user_id,))
-            p_lvl, p_exp, p_floor = cursor.fetchone()
-            level_upped = False
-            while p_lvl < 100:
-                if p_exp >= p_lvl * 100:
-                    p_exp -= p_lvl * 100
-                    p_lvl += 1
-                    p_floor += 1
-                    level_upped = True
-                else:
-                    break
-            if level_upped:
-                cursor.execute("UPDATE WistoriaPlayers SET level = ?, exp = ?, current_floor = ? WHERE user_id = ?", (p_lvl, p_exp, p_floor, user_id))
-                msg += f"🎉 Auto Level-Up triggered! You are now **Level {p_lvl}**.\n"
-            
-        # 2. Bơm Vật liệu
-        if material_id:
-            if material_id not in MATERIALS:
-                msg += f"❌ Failed to add material: Invalid ID `{material_id}`.\n"
-            else:
-                try:
-                    cursor.execute("SELECT quantity FROM PlayerMaterials WHERE user_id = ? AND material_key = ?", (user_id, material_id))
-                    if cursor.fetchone():
-                        cursor.execute("UPDATE PlayerMaterials SET quantity = quantity + ? WHERE user_id = ? AND material_key = ?", (quantity, user_id, material_id))
-                    else:
-                        cursor.execute("INSERT INTO PlayerMaterials (user_id, material_key, quantity) VALUES (?, ?, ?)", (user_id, material_id, quantity))
-                    msg += f"✅ Added **{quantity}x {MATERIALS[material_id]['name']}** {MATERIALS[material_id]['emoji']}.\n"
-                except sqlite3.OperationalError:
-                    msg += "❌ Material database error.\n"
 
-        # 3. Bơm Vũ khí
-        if weapon_id:
-            if weapon_id not in WEAPONS:
-                msg += f"❌ Failed to add weapon: Invalid ID `{weapon_id}`.\n"
-            else:
-                try:
-                    cursor.execute("SELECT quantity FROM PlayerInventory WHERE user_id = ? AND weapon_key = ?", (user_id, weapon_id))
-                    if cursor.fetchone():
-                        cursor.execute("UPDATE PlayerInventory SET quantity = quantity + ? WHERE user_id = ? AND weapon_key = ?", (quantity, user_id, weapon_id))
-                    else:
-                        # Thêm vũ khí mới với level mặc định là 1
-                        cursor.execute("INSERT INTO PlayerInventory (user_id, weapon_key, quantity, weapon_level, enhance_level, weapon_exp) VALUES (?, ?, ?, 1, 1, 0)", (user_id, weapon_id, quantity))
-                    msg += f"✅ Added **{quantity}x {WEAPONS[weapon_id]['name']}** {WEAPONS[weapon_id]['emoji']}.\n"
-                except sqlite3.OperationalError:
-                    msg += "❌ Weapon inventory database error.\n"
-                
-        conn.commit()
-        conn.close()
-        
-        await interaction.response.send_message(msg, ephemeral=True)
-    # ========================================================
-    # DEVELOPER COMMANDS (ADMIN CHEAT CODE - REMOVE)
-    # ========================================================
-    @app_commands.command(name="admin_remove", description="[DEV ONLY] Cheat code to remove Credits, EXP, Materials, or Weapons")
-    @app_commands.describe(
-        credits="Amount of credits to remove", 
-        exp="Amount of EXP to remove", 
-        material_id="Material ID (e.g., mat_ancient_essence)", 
-        weapon_id="Weapon ID (e.g., w_sword_of_will)",
-        quantity="Quantity of material or weapon to remove"
-    )
-    async def admin_remove(self, interaction: discord.Interaction, credits: int = 0, exp: int = 0, material_id: str = None, weapon_id: str = None, quantity: int = 1):
-        # THAY DÃY SỐ NÀY BẰNG ID DISCORD CỦA BẠN!
-        DEVELOPER_ID = 834054385746575380 
-        
-        if interaction.user.id != DEVELOPER_ID:
-            return await interaction.response.send_message("⛔ **Access Denied:** This command is restricted to Developers only!", ephemeral=True)
-            
-        user_id = interaction.user.id
-        conn = sqlite3.connect('bot_database.db')
-        cursor = conn.cursor()
-        
-        cursor.execute("SELECT level, exp, credits, equipped_weapon FROM WistoriaPlayers WHERE user_id = ?", (user_id,))
-        player = cursor.fetchone()
-        if not player:
-            conn.close()
-            return await interaction.response.send_message("⚠️ You need to `/start_journey` before using cheats!", ephemeral=True)
-            
-        p_lvl, p_exp, p_creds, equipped_wpn = player
-        msg = "🗑️ **Developer Cheat (Remove) Activated:**\n"
-        
-        # 1. Trừ Tiền và EXP (Không cho rớt xuống âm)
-        if credits > 0 or exp > 0:
-            new_creds = max(0, p_creds - credits)
-            new_exp = max(0, p_exp - exp)
-            cursor.execute("UPDATE WistoriaPlayers SET credits = ?, exp = ? WHERE user_id = ?", (new_creds, new_exp, user_id))
-            msg += f"✅ Removed **{p_creds - new_creds} ✨ Credits** and **{p_exp - new_exp} 📈 EXP**.\n"
-            
-        # 2. Trừ Vật liệu
-        if material_id:
-            try:
-                cursor.execute("SELECT quantity FROM PlayerMaterials WHERE user_id = ? AND material_key = ?", (user_id, material_id))
-                mat_row = cursor.fetchone()
-                if mat_row:
-                    new_qty = mat_row[0] - quantity
-                    if new_qty <= 0:
-                        cursor.execute("DELETE FROM PlayerMaterials WHERE user_id = ? AND material_key = ?", (user_id, material_id))
-                        msg += f"✅ Removed ALL **{MATERIALS.get(material_id, {'name': material_id})['name']}**.\n"
-                    else:
-                        cursor.execute("UPDATE PlayerMaterials SET quantity = ? WHERE user_id = ? AND material_key = ?", (new_qty, user_id, material_id))
-                        msg += f"✅ Removed **{quantity}x {MATERIALS.get(material_id, {'name': material_id})['name']}**.\n"
-                else:
-                    msg += f"❌ You don't have any `{material_id}` to remove.\n"
-            except sqlite3.OperationalError:
-                msg += "❌ Material database error.\n"
-
-        # 3. Trừ Vũ khí
-        if weapon_id:
-            try:
-                cursor.execute("SELECT quantity FROM PlayerInventory WHERE user_id = ? AND weapon_key = ?", (user_id, weapon_id))
-                wpn_row = cursor.fetchone()
-                if wpn_row:
-                    current_qty = wpn_row[0]
-                    # Chống lỗi mất vũ khí đang trang bị
-                    if equipped_wpn == weapon_id and (current_qty - quantity) <= 0:
-                        msg += f"⚠️ **Warning:** You are trying to remove an equipped weapon! Unequip it first.\n"
-                    else:
-                        new_qty = current_qty - quantity
-                        if new_qty <= 0:
-                            cursor.execute("DELETE FROM PlayerInventory WHERE user_id = ? AND weapon_key = ?", (user_id, weapon_id))
-                            msg += f"✅ Removed ALL **{WEAPONS.get(weapon_id, {'name': weapon_id})['name']}**.\n"
-                        else:
-                            cursor.execute("UPDATE PlayerInventory SET quantity = ? WHERE user_id = ? AND weapon_key = ?", (new_qty, user_id, weapon_id))
-                            msg += f"✅ Removed **{quantity}x {WEAPONS.get(weapon_id, {'name': weapon_id})['name']}**.\n"
-                else:
-                    msg += f"❌ You don't have any `{weapon_id}` to remove.\n"
-            except sqlite3.OperationalError:
-                msg += "❌ Weapon inventory database error.\n"
-                
-        conn.commit()
-        conn.close()
-        
-        await interaction.response.send_message(msg, ephemeral=True)
     @app_commands.command(name="profile", description="View your detailed Rigarden Student Profile & Stats")
     async def profile(self, interaction: discord.Interaction):
         conn = sqlite3.connect('bot_database.db')
@@ -611,14 +447,14 @@ class WistoriaRPG(commands.Cog):
         
         faction_info = FACTIONS.get(faction_key, {"name": "Unknown", "emoji": "❓"})
         max_hp = faction_info.get("base_hp", 100) + (level * faction_info.get("hp_growth", 10))
-        max_mana = faction_info.get("base_mana", 50) + (level * faction_info.get("mana_growth", 5))
+        max_mana = faction_info.get("base_mana", 50) + int(level * faction_info.get("mana_growth", 5) * 0.25)
         
         equipped_weapon = WEAPONS.get(weapon_key, WEAPONS["w_broken_branch"])
         w_tier = equipped_weapon["tier"]
         
         refine_bonus_dmg = (weapon_level - 1) * LVL_BONUS.get(w_tier, 0)
         enhance_bonus_dmg = (enhance_level - 1) * ENHANCE_BONUS.get(w_tier, 0)
-        total_dmg = equipped_weapon["dmg"] + refine_bonus_dmg + enhance_bonus_dmg + (level * 3)
+        total_dmg = equipped_weapon["dmg"] + refine_bonus_dmg + enhance_bonus_dmg + int(level * 0.8)
         
         combat_power = max_hp + max_mana + (total_dmg * 10) + (level * 50)
         
@@ -668,11 +504,11 @@ class WistoriaRPG(commands.Cog):
             
             faction_info = FACTIONS.get(faction_key, {"base_hp": 100, "hp_growth": 10, "base_mana": 50, "mana_growth": 5, "emoji": "❓"})
             max_hp = faction_info.get("base_hp", 100) + (level * faction_info.get("hp_growth", 10))
-            max_mana = faction_info.get("base_mana", 50) + (level * faction_info.get("mana_growth", 5))
+            max_mana = faction_info.get("base_mana", 50) + int(level * faction_info.get("mana_growth", 5) * 0.25)
             
             equipped_weapon = WEAPONS.get(w_key, WEAPONS["w_broken_branch"])
             w_tier = equipped_weapon["tier"]
-            total_dmg = equipped_weapon["dmg"] + ((w_lvl - 1) * LVL_BONUS.get(w_tier, 0)) + ((e_lvl - 1) * ENHANCE_BONUS.get(w_tier, 0)) + (level * 3)
+            total_dmg = equipped_weapon["dmg"] + ((w_lvl - 1) * LVL_BONUS.get(w_tier, 0)) + ((e_lvl - 1) * ENHANCE_BONUS.get(w_tier, 0)) + int(level * 0.8)
             cp = max_hp + max_mana + (total_dmg * 10) + (level * 50)
             
             leaderboard.append({"user_id": u_id, "cp": cp, "level": level, "faction": faction_info['emoji']})
@@ -1197,6 +1033,164 @@ class WistoriaRPG(commands.Cog):
         embed.add_field(name="Economy", value=f"🛠️ **Next Refine Cost:** {next_upgrade_cost}\n💰 **Recycle Value:** {SELL_PRICES.get(tier, 25)} Credits", inline=False)
         embed.set_footer(text="To upgrade this weapon, obtain duplicates and use /upgrade!")
         await interaction.response.send_message(embed=embed)
+
+
+    # ========================================================
+    # DEVELOPER COMMANDS (ADMIN CHEAT CODE - GIVE)
+    # ========================================================
+    @app_commands.command(name="admin_give", description="[DEV ONLY] Give Credits, EXP, Materials, or Weapons")
+    @app_commands.describe(
+        credits="Amount of credits to give", 
+        exp="Amount of EXP to give", 
+        material_id="Material ID (e.g., mat_ancient_essence)", 
+        weapon_id="Weapon ID (e.g., w_sword_of_will)",
+        quantity="Quantity of material or weapon"
+    )
+    async def admin_give(self, interaction: discord.Interaction, credits: int = 0, exp: int = 0, material_id: str = None, weapon_id: str = None, quantity: int = 1):
+        DEVELOPER_ID = 834054385746575380 
+        
+        if interaction.user.id != DEVELOPER_ID:
+            return await interaction.response.send_message("⛔ **Access Denied:** This command is restricted to Developers only!", ephemeral=True)
+            
+        user_id = interaction.user.id
+        conn = sqlite3.connect('bot_database.db')
+        cursor = conn.cursor()
+        
+        cursor.execute("SELECT level FROM WistoriaPlayers WHERE user_id = ?", (user_id,))
+        if not cursor.fetchone():
+            conn.close()
+            return await interaction.response.send_message("⚠️ You need to `/start_journey` before using cheats!", ephemeral=True)
+            
+        msg = "🛠️ **Developer Cheat Activated:**\n"
+        
+        if credits > 0 or exp > 0:
+            cursor.execute("UPDATE WistoriaPlayers SET credits = credits + ?, exp = exp + ? WHERE user_id = ?", (credits, exp, user_id))
+            msg += f"✅ Added **{credits} ✨ Credits** and **{exp} 📈 EXP**.\n"
+            
+            cursor.execute("SELECT level, exp, current_floor FROM WistoriaPlayers WHERE user_id = ?", (user_id,))
+            p_lvl, p_exp, p_floor = cursor.fetchone()
+            level_upped = False
+            while p_lvl < 100:
+                if p_exp >= p_lvl * 100:
+                    p_exp -= p_lvl * 100
+                    p_lvl += 1
+                    p_floor += 1
+                    level_upped = True
+                else:
+                    break
+            if level_upped:
+                cursor.execute("UPDATE WistoriaPlayers SET level = ?, exp = ?, current_floor = ? WHERE user_id = ?", (p_lvl, p_exp, p_floor, user_id))
+                msg += f"🎉 Auto Level-Up triggered! You are now **Level {p_lvl}**.\n"
+            
+        if material_id:
+            if material_id not in MATERIALS:
+                msg += f"❌ Failed to add material: Invalid ID `{material_id}`.\n"
+            else:
+                try:
+                    cursor.execute("SELECT quantity FROM PlayerMaterials WHERE user_id = ? AND material_key = ?", (user_id, material_id))
+                    if cursor.fetchone():
+                        cursor.execute("UPDATE PlayerMaterials SET quantity = quantity + ? WHERE user_id = ? AND material_key = ?", (quantity, user_id, material_id))
+                    else:
+                        cursor.execute("INSERT INTO PlayerMaterials (user_id, material_key, quantity) VALUES (?, ?, ?)", (user_id, material_id, quantity))
+                    msg += f"✅ Added **{quantity}x {MATERIALS[material_id]['name']}** {MATERIALS[material_id]['emoji']}.\n"
+                except sqlite3.OperationalError:
+                    msg += "❌ Material database error.\n"
+
+        if weapon_id:
+            if weapon_id not in WEAPONS:
+                msg += f"❌ Failed to add weapon: Invalid ID `{weapon_id}`.\n"
+            else:
+                try:
+                    cursor.execute("SELECT quantity FROM PlayerInventory WHERE user_id = ? AND weapon_key = ?", (user_id, weapon_id))
+                    if cursor.fetchone():
+                        cursor.execute("UPDATE PlayerInventory SET quantity = quantity + ? WHERE user_id = ? AND weapon_key = ?", (quantity, user_id, weapon_id))
+                    else:
+                        cursor.execute("INSERT INTO PlayerInventory (user_id, weapon_key, quantity, weapon_level, enhance_level, weapon_exp) VALUES (?, ?, ?, 1, 1, 0)", (user_id, weapon_id, quantity))
+                    msg += f"✅ Added **{quantity}x {WEAPONS[weapon_id]['name']}** {WEAPONS[weapon_id]['emoji']}.\n"
+                except sqlite3.OperationalError:
+                    msg += "❌ Weapon inventory database error.\n"
+                
+        conn.commit()
+        conn.close()
+        await interaction.response.send_message(msg, ephemeral=True)
+
+    # ========================================================
+    # DEVELOPER COMMANDS (ADMIN CHEAT CODE - REMOVE)
+    # ========================================================
+    @app_commands.command(name="admin_remove", description="[DEV ONLY] Cheat code to remove Credits, EXP, Materials, or Weapons")
+    @app_commands.describe(
+        credits="Amount of credits to remove", 
+        exp="Amount of EXP to remove", 
+        material_id="Material ID (e.g., mat_ancient_essence)", 
+        weapon_id="Weapon ID (e.g., w_sword_of_will)",
+        quantity="Quantity of material or weapon to remove"
+    )
+    async def admin_remove(self, interaction: discord.Interaction, credits: int = 0, exp: int = 0, material_id: str = None, weapon_id: str = None, quantity: int = 1):
+        DEVELOPER_ID = 834054385746575380 
+        
+        if interaction.user.id != DEVELOPER_ID:
+            return await interaction.response.send_message("⛔ **Access Denied:** This command is restricted to Developers only!", ephemeral=True)
+            
+        user_id = interaction.user.id
+        conn = sqlite3.connect('bot_database.db')
+        cursor = conn.cursor()
+        
+        cursor.execute("SELECT level, exp, credits, equipped_weapon FROM WistoriaPlayers WHERE user_id = ?", (user_id,))
+        player = cursor.fetchone()
+        if not player:
+            conn.close()
+            return await interaction.response.send_message("⚠️ You need to `/start_journey` before using cheats!", ephemeral=True)
+            
+        p_lvl, p_exp, p_creds, equipped_wpn = player
+        msg = "🗑️ **Developer Cheat (Remove) Activated:**\n"
+        
+        if credits > 0 or exp > 0:
+            new_creds = max(0, p_creds - credits)
+            new_exp = max(0, p_exp - exp)
+            cursor.execute("UPDATE WistoriaPlayers SET credits = ?, exp = ? WHERE user_id = ?", (new_creds, new_exp, user_id))
+            msg += f"✅ Removed **{p_creds - new_creds} ✨ Credits** and **{p_exp - new_exp} 📈 EXP**.\n"
+            
+        if material_id:
+            try:
+                cursor.execute("SELECT quantity FROM PlayerMaterials WHERE user_id = ? AND material_key = ?", (user_id, material_id))
+                mat_row = cursor.fetchone()
+                if mat_row:
+                    new_qty = mat_row[0] - quantity
+                    if new_qty <= 0:
+                        cursor.execute("DELETE FROM PlayerMaterials WHERE user_id = ? AND material_key = ?", (user_id, material_id))
+                        msg += f"✅ Removed ALL **{MATERIALS.get(material_id, {'name': material_id})['name']}**.\n"
+                    else:
+                        cursor.execute("UPDATE PlayerMaterials SET quantity = ? WHERE user_id = ? AND material_key = ?", (new_qty, user_id, material_id))
+                        msg += f"✅ Removed **{quantity}x {MATERIALS.get(material_id, {'name': material_id})['name']}**.\n"
+                else:
+                    msg += f"❌ You don't have any `{material_id}` to remove.\n"
+            except sqlite3.OperationalError:
+                msg += "❌ Material database error.\n"
+
+        if weapon_id:
+            try:
+                cursor.execute("SELECT quantity FROM PlayerInventory WHERE user_id = ? AND weapon_key = ?", (user_id, weapon_id))
+                wpn_row = cursor.fetchone()
+                if wpn_row:
+                    current_qty = wpn_row[0]
+                    if equipped_wpn == weapon_id and (current_qty - quantity) <= 0:
+                        msg += f"⚠️ **Warning:** You are trying to remove an equipped weapon! Unequip it first.\n"
+                    else:
+                        new_qty = current_qty - quantity
+                        if new_qty <= 0:
+                            cursor.execute("DELETE FROM PlayerInventory WHERE user_id = ? AND weapon_key = ?", (user_id, weapon_id))
+                            msg += f"✅ Removed ALL **{WEAPONS.get(weapon_id, {'name': weapon_id})['name']}**.\n"
+                        else:
+                            cursor.execute("UPDATE PlayerInventory SET quantity = ? WHERE user_id = ? AND weapon_key = ?", (new_qty, user_id, weapon_id))
+                            msg += f"✅ Removed **{quantity}x {WEAPONS.get(weapon_id, {'name': weapon_id})['name']}**.\n"
+                else:
+                    msg += f"❌ You don't have any `{weapon_id}` to remove.\n"
+            except sqlite3.OperationalError:
+                msg += "❌ Weapon inventory database error.\n"
+                
+        conn.commit()
+        conn.close()
+        await interaction.response.send_message(msg, ephemeral=True)
 
 
 async def setup(bot):
