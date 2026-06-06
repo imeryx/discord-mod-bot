@@ -85,7 +85,7 @@ class TicketCog(commands.Cog):
         embed = discord.Embed(
             title="<:elfie_hug:1512859756862378046> Support Center",
             description=(
-                "**Chào mừng bạn đến với hệ thống hỗ trợ**\n\n"
+                "**Chào mừng bạn đến với trung tâm hỗ trợ của Elfaria**\n\n"
                 "Vui lòng bấm vào nút bên dưới để mở ticket. Admin sẽ liên hệ với bạn trong thời gian sớm nhất.\n"
             ),
             color=0x007BFF
