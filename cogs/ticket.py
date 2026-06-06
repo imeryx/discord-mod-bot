@@ -60,8 +60,8 @@ class TicketLauncher(discord.ui.View):
         await channel.send(embed=embed, view=TicketControls())
         await i.response.send_message(f"✅ Ticket đã tạo: {channel.mention}", ephemeral=True)
 
-    @discord.ui.button(label="Góp Ý", style=discord.ButtonStyle.primary, emoji="💡", custom_id="btn_idea")
-    async def btn_idea(self, i, b): await self.create_ticket(i, "Góp Ý")
+    @discord.ui.button(label="Hỗ Trợ", style=discord.ButtonStyle.primary, emoji="<:pnv_support:1512882340995534989>", custom_id="btn_idea")
+    async def btn_idea(self, i, b): await self.create_ticket(i, "Hỗ Trợ")
     
     @discord.ui.button(label="Tố Cáo", style=discord.ButtonStyle.secondary, emoji="⚠️", custom_id="btn_report")
     async def btn_report(self, i, b): await self.create_ticket(i, "Tố Cáo")
