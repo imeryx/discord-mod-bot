@@ -6,85 +6,6 @@ import sqlite3
 import database
 
 # ========================================================
-# MODAL: KICK REASON INPUT
-# ========================================================
-class KickReasonModal(discord.ui.Modal, title='Confirm Member Kick'):
-    reason = discord.ui.TextInput(
-        label='Kick Reason (Will be sent via DM)',
-        style=discord.TextStyle.paragraph,
-        placeholder='E.g.: You have been inactive in the server for 14 days...',
-        required=True,
-        max_length=500
-    )
-
-    def __init__(self, selected_members: list[str]):
-        super().__init__()
-        self.selected_members = selected_members
-
-    async def on_submit(self, interaction: discord.Interaction):
-        await interaction.response.send_message("⏳ Sending DMs and kicking selected members...", ephemeral=True)
-        
-        kicked_count = 0
-        failed_count = 0
-        
-        for member_id in self.selected_members:
-            member = interaction.guild.get_member(int(member_id))
-            if member:
-                # 1. Attempt to send DM
-                try:
-                    embed = discord.Embed(
-                        title=f"Kicked from {interaction.guild.name}",
-                        description=f"**Reason:**\n{self.reason.value}",
-                        color=discord.Color.red()
-                    )
-                    await member.send(embed=embed)
-                except discord.HTTPException:
-                    pass 
-                
-                # 2. Execute Kick
-                try:
-                    await member.kick(reason=self.reason.value)
-                    kicked_count += 1
-                except discord.Forbidden:
-                    failed_count += 1 
-                    
-        await interaction.followup.send(f"✅ **Done!** Successfully kicked **{kicked_count}** members. (Failed: {failed_count})", ephemeral=True)
-
-
-# ========================================================
-# VIEW: INACTIVE FILTER SELECTION
-# ========================================================
-class InactiveFilterView(discord.ui.View):
-    def __init__(self, options):
-        super().__init__(timeout=600) 
-        self.selected_members = []
-        
-        self.select_menu = discord.ui.Select(
-            placeholder="Open to select members to kick...",
-            min_values=1,
-            max_values=len(options),
-            options=options
-        )
-        self.select_menu.callback = self.select_callback
-        self.add_item(self.select_menu)
-
-        self.kick_btn = discord.ui.Button(label="Proceed to Kick Selected", style=discord.ButtonStyle.danger, disabled=True, emoji="🔨")
-        self.kick_btn.callback = self.kick_callback
-        self.add_item(self.kick_btn)
-
-    async def select_callback(self, interaction: discord.Interaction):
-        self.selected_members = self.select_menu.values
-        self.kick_btn.disabled = False 
-        await interaction.response.edit_message(view=self)
-
-    async def kick_callback(self, interaction: discord.Interaction):
-        if not interaction.user.guild_permissions.kick_members:
-            return await interaction.response.send_message("❌ You do not have permission to kick members!", ephemeral=True)
-        
-        await interaction.response.send_modal(KickReasonModal(self.selected_members))
-
-
-# ========================================================
 # AUTO-PUNISHMENT SYSTEM
 # ========================================================
 async def apply_auto_punishment(interaction_or_message, member: discord.Member, warn_count: int):
@@ -144,7 +65,7 @@ class Moderation(commands.Cog):
         
         conn.commit()
         conn.close()
-        print("-> Cog [Moderation] loaded successfully! (Inactive Scanner Integrated)")
+        print("-> Cog [Moderation] loaded successfully! (Detailed version with Bulk Kick)")
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
@@ -174,16 +95,14 @@ class Moderation(commands.Cog):
             return "❌ You cannot punish yourself!"
         return None
 
-    # ================= 1. SCAN INACTIVE =================
-    @app_commands.command(name="scan_inactive", description="Filter members who have been inactive in the last 14 days")
-    @app_commands.describe(max_messages="Max messages allowed to be considered inactive (e.g., 0 or 5)")
+    # ================= 1. SCAN ACTIVITY =================
+    @app_commands.command(name="scan_activity", description="List members activity in the last 30 days")
     @app_commands.default_permissions(kick_members=True)
-    async def scan_inactive(self, interaction: discord.Interaction, max_messages: int = 0):
-        await interaction.response.defer(ephemeral=True)
+    async def scan_activity(self, interaction: discord.Interaction):
+        # Defer the response as compiling a large list might take a few seconds
+        await interaction.response.defer()
         
-        now = discord.utils.utcnow()
-        fourteen_days_ago = now - datetime.timedelta(days=14)
-        date_threshold = fourteen_days_ago.strftime('%Y-%m-%d')
+        thirty_days_ago = (discord.utils.utcnow() - datetime.timedelta(days=30)).strftime('%Y-%m-%d')
         
         # Retrieve data from Database
         conn = sqlite3.connect('bot_database.db')
@@ -193,62 +112,89 @@ class Moderation(commands.Cog):
             FROM DailyMessageCount 
             WHERE date_str >= ? 
             GROUP BY user_id
-        """, (date_threshold,))
+            ORDER BY SUM(msg_count) ASC
+        """, (thirty_days_ago,))
         
         active_data = {row[0]: row[1] for row in cursor.fetchall()}
         conn.close()
 
-        old_inactive = []
-        new_inactive = []
-
-        for member in interaction.guild.members:
-            if member.bot: continue
-            
+        lines = ["**Rank | Name | Messages (30d) | ID**"]
+        
+        # Filter out bots and assign indices
+        valid_members = [m for m in interaction.guild.members if not m.bot]
+        
+        for idx, member in enumerate(valid_members, 1):
             count = active_data.get(member.id, 0)
+            # Formatting to align columns nicely
+            line = f"`{idx:03}` | {member.display_name[:15]:<15} | {count:<10} | `{member.id}`"
+            lines.append(line)
+
+        # Discord has a 2000 character limit per message, so we send in chunks of 20
+        if len(lines) == 1:
+            return await interaction.followup.send("✅ No members found to scan.")
+
+        for i in range(0, len(lines), 20):
+            chunk = "\n".join(lines[i:i+20])
+            await interaction.followup.send(chunk)
+
+    # ================= 2. BULK KICK =================
+    @app_commands.command(name="bulk_kick", description="Kick multiple members using their ID or Rank index")
+    @app_commands.describe(targets="Enter IDs or Rank indices separated by comma (e.g., 001, 005, 123456789)")
+    @app_commands.default_permissions(kick_members=True)
+    async def bulk_kick(self, interaction: discord.Interaction, targets: str, reason: str = "Inactive for 30 days"):
+        # Defer and make it ephemeral so the target list is hidden
+        await interaction.response.defer(ephemeral=True)
+        
+        valid_members = [m for m in interaction.guild.members if not m.bot]
+        target_inputs = [t.strip() for t in targets.split(",") if t.strip()]
+        
+        kicked_names = []
+        failed_names = []
+
+        for target in target_inputs:
+            member = None
+            # Check if input is a 1-3 digit index (e.g., 1, 05, 012)
+            if target.isdigit() and len(target) <= 3:
+                idx = int(target) - 1
+                if 0 <= idx < len(valid_members):
+                    member = valid_members[idx]
+            # Otherwise treat as Discord ID
+            elif target.isdigit():
+                member = interaction.guild.get_member(int(target))
+
+            if member:
+                # Check hierarchy before kicking
+                if self.check_hierarchy(interaction, member):
+                    failed_names.append(member.name)
+                    continue
+                    
+                try:
+                    # Attempt DM
+                    try:
+                        await member.send(f"You have been kicked from {interaction.guild.name}. Reason: {reason}")
+                    except discord.HTTPException:
+                        pass
+                        
+                    await member.kick(reason=reason)
+                    kicked_names.append(member.name)
+                except discord.Forbidden:
+                    failed_names.append(member.name)
+            else:
+                failed_names.append(target) # Invalid target
+
+        # Compile Result Message
+        result_msg = ""
+        if kicked_names:
+            result_msg += f"✅ Successfully kicked: **{', '.join(kicked_names)}**\n"
+        if failed_names:
+            result_msg += f"❌ Failed to kick: **{', '.join(failed_names)}**"
             
-            if count <= max_messages:
-                if member.joined_at and member.joined_at > fourteen_days_ago:
-                    new_inactive.append((member, count))
-                else:
-                    old_inactive.append((member, count))
-
-        all_inactives = old_inactive + new_inactive
-        
-        if not all_inactives:
-            return await interaction.followup.send("✅ Excellent! No inactive members meet this criteria.")
-
-        display_list = all_inactives[:25]
-        dropdown_options = []
-        
-        for member, count in display_list:
-            is_new = member.joined_at > fourteen_days_ago
-            status_text = "New Member (<14 days)" if is_new else "Old Member"
-            desc = f"{status_text} | Sent {count} messages"
+        if not result_msg:
+            result_msg = "⚠️ No valid targets found."
             
-            dropdown_options.append(
-                discord.SelectOption(
-                    label=member.display_name[:100],
-                    description=desc,
-                    value=str(member.id),
-                    emoji="🌱" if is_new else "👻"
-                )
-            )
+        await interaction.followup.send(result_msg)
 
-        embed = discord.Embed(
-            title="🔍 Inactive Members Scan Report",
-            description=f"Fetched data from the last 14 days. Limit criteria: **≤ {max_messages} messages**.",
-            color=discord.Color.orange()
-        )
-        embed.add_field(name="👻 Inactive Old Members", value=str(len(old_inactive)), inline=True)
-        embed.add_field(name="🌱 Inactive New Members", value=str(len(new_inactive)), inline=True)
-        
-        warning = ""
-        if len(all_inactives) > 25:
-            warning = f"\n⚠️ *Note: Found {len(all_inactives)} members, but the dropdown below only shows the first 25 due to UI limits.*"
-        
-        await interaction.followup.send(content=warning, embed=embed, view=InactiveFilterView(dropdown_options))
-
-    # ================= 2. KICK COMMAND =================
+    # ================= 3. KICK COMMAND =================
     @app_commands.command(name="kick", description="Kick a member from the server")
     @app_commands.default_permissions(kick_members=True)
     async def kick(self, interaction: discord.Interaction, member: discord.Member, reason: str = "No reason provided"):
@@ -262,7 +208,7 @@ class Moderation(commands.Cog):
         except Exception as e:
             await interaction.response.send_message(f"❌ An error occurred: {e}", ephemeral=True)
 
-    # ================= 3. BAN COMMAND =================
+    # ================= 4. BAN COMMAND =================
     @app_commands.command(name="ban", description="Permanently ban a member from the server")
     @app_commands.default_permissions(ban_members=True)
     async def ban(self, interaction: discord.Interaction, member: discord.Member, reason: str = "No reason provided"):
@@ -276,7 +222,7 @@ class Moderation(commands.Cog):
         except Exception as e:
             await interaction.response.send_message(f"❌ An error occurred: {e}", ephemeral=True)
 
-    # ================= 4. TIMEOUT COMMAND =================
+    # ================= 5. TIMEOUT COMMAND =================
     @app_commands.command(name="timeout", description="Mute a member for a specified amount of time")
     @app_commands.default_permissions(moderate_members=True)
     @app_commands.describe(minutes="Duration of the timeout in minutes")
@@ -292,7 +238,7 @@ class Moderation(commands.Cog):
         except Exception as e:
             await interaction.response.send_message(f"❌ An error occurred: {e}", ephemeral=True)
 
-    # ================= 5. WARN COMMAND =================
+    # ================= 6. WARN COMMAND =================
     @app_commands.command(name="warn", description="Issue a warning to a member and log it")
     @app_commands.default_permissions(moderate_members=True)
     async def warn(self, interaction: discord.Interaction, member: discord.Member, reason: str):
@@ -313,7 +259,7 @@ class Moderation(commands.Cog):
         except Exception as e:
             await interaction.response.send_message(f"❌ Database error occurred: {e}", ephemeral=True)
 
-    # ================= 6. CHECKWARN COMMAND =================
+    # ================= 7. CHECKWARN COMMAND =================
     @app_commands.command(name="checkwarn", description="Check the warning history of a member")
     @app_commands.default_permissions(moderate_members=True)
     async def checkwarn(self, interaction: discord.Interaction, member: discord.Member):
@@ -341,7 +287,7 @@ class Moderation(commands.Cog):
             
         await interaction.response.send_message(embed=embed)
 
-    # ================= 7. CLEARWARN COMMAND =================
+    # ================= 8. CLEARWARN COMMAND =================
     @app_commands.command(name="clearwarn", description="Clear all warnings from a member's record")
     @app_commands.default_permissions(moderate_members=True)
     async def clearwarn(self, interaction: discord.Interaction, member: discord.Member):
@@ -358,7 +304,7 @@ class Moderation(commands.Cog):
         except Exception as e:
             await interaction.response.send_message(f"❌ An error occurred: {e}", ephemeral=True)
 
-    # ================= 8. REMOVEWARN COMMAND =================
+    # ================= 9. REMOVEWARN COMMAND =================
     @app_commands.command(name="removewarn", description="Remove a specific warning using its ID")
     @app_commands.default_permissions(moderate_members=True)
     @app_commands.describe(warning_id="Enter the Warning ID (found via /checkwarn)")
@@ -374,7 +320,7 @@ class Moderation(commands.Cog):
         except Exception as e:
             await interaction.response.send_message(f"❌ An error occurred: {e}", ephemeral=True)
 
-    # ================= 9. UNTIMEOUT COMMAND =================
+    # ================= 10. UNTIMEOUT COMMAND =================
     @app_commands.command(name="untimeout", description="Remove a timeout (unmute) from a member")
     @app_commands.default_permissions(moderate_members=True)
     async def untimeout(self, interaction: discord.Interaction, member: discord.Member, reason: str = "No reason provided"):
@@ -391,7 +337,7 @@ class Moderation(commands.Cog):
         except Exception as e:
             await interaction.response.send_message(f"❌ An error occurred: {e}", ephemeral=True)
 
-    # ================= 10. UNBAN COMMAND =================
+    # ================= 11. UNBAN COMMAND =================
     @app_commands.command(name="unban", description="Revoke a ban for a user")
     @app_commands.default_permissions(ban_members=True)
     @app_commands.describe(user="The ID of the user to unban")
