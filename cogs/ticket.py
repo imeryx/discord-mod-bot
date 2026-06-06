@@ -3,6 +3,7 @@ from discord.ext import commands
 from discord import app_commands
 import asyncio
 import io
+import datetime
 
 # --- 1. NÚT ĐÓNG TICKET VÀ LƯU LỊCH SỬ (TRANSCRIPT) ---
 class TicketControls(discord.ui.View):
@@ -13,16 +14,19 @@ class TicketControls(discord.ui.View):
     async def close_ticket(self, i: discord.Interaction, b: discord.ui.Button):
         # Bảo mật: Chỉ người có quyền quản lý mới được đóng
         if not i.user.guild_permissions.manage_messages:
-            return await i.response.send_message("❌ Chỉ staff mới có quyền đóng ticket!", ephemeral=True)
+            return await i.response.send_message("❌ Chỉ admin mới có quyền đóng ticket!", ephemeral=True)
             
         await i.response.send_message("🔒 Đang lưu lịch sử chat và đóng ticket...", ephemeral=True)
         
         # Tạo file transcript
         transcript = io.StringIO()
-        transcript.write(f"--- LỊCH SỬ TICKET: {i.channel.name} ---\n\n")
+        transcript.write(f" LỊCH SỬ TICKET: {i.channel.name} \n\n")
         async for message in i.channel.history(limit=None, oldest_first=True):
-            transcript.write(f"[{message.created_at.strftime('%H:%M:%S')}] {message.author.name}: {message.content}\n")
-        
+            # Chuyển UTC sang giờ Việt Nam (UTC+7)
+            utc_time = message.created_at
+            vn_time = utc_time + datetime.timedelta(hours=7) 
+            
+            transcript.write(f"[{vn_time.strftime('%Y-%m-%d %H:%M:%S')}] {message.author.name}: {message.content}\n")
         transcript.seek(0)
         file = discord.File(fp=transcript, filename=f"ticket_{i.channel.name}.txt")
         
@@ -50,17 +54,17 @@ class TicketLauncher(discord.ui.View):
         
         embed = discord.Embed(
             title=f"📩 Hỗ trợ: {category}",
-            description=f"Chào {i.user.mention}, vui lòng trình bày vấn đề của bạn. Staff sẽ phản hồi sớm nhất!",
+            description=f"Chào {i.user.mention}, vui lòng trình bày vấn đề của bạn. Admin sẽ phản hồi trong thời gian sớm nhất!",
             color=0x2b2d31
         )
         await channel.send(embed=embed, view=TicketControls())
         await i.response.send_message(f"✅ Ticket đã tạo: {channel.mention}", ephemeral=True)
 
-    @discord.ui.button(label="Mua Hàng", style=discord.ButtonStyle.primary, emoji="🛒", custom_id="btn_buy")
-    async def btn_buy(self, i, b): await self.create_ticket(i, "Mua Hàng")
+    @discord.ui.button(label="Góp Ý", style=discord.ButtonStyle.primary, emoji="💡", custom_id="btn_idea")
+    async def btn_idea(self, i, b): await self.create_ticket(i, "Góp Ý")
     
-    @discord.ui.button(label="Hỗ Trợ/Bảo Hành", style=discord.ButtonStyle.secondary, emoji="🔧", custom_id="btn_support")
-    async def btn_support(self, i, b): await self.create_ticket(i, "Hỗ Trợ/Bảo Hành")
+    @discord.ui.button(label="Tố Cáo", style=discord.ButtonStyle.secondary, emoji="⚠️", custom_id="btn_report")
+    async def btn_report(self, i, b): await self.create_ticket(i, "Tố Cáo")
 
 # --- 3. COG VÀ LỆNH SLASH ---
 class TicketCog(commands.Cog):
@@ -71,7 +75,7 @@ class TicketCog(commands.Cog):
         self.bot.add_view(TicketLauncher())
         self.bot.add_view(TicketControls())
 
-    @app_commands.command(name="setup_ticket", description="Gửi Panel Ticket chuẩn mẫu")
+    @app_commands.command(name="setup_ticket", description="Tạo Ticket Hỗ Trợ")
     @app_commands.default_permissions(administrator=True)
     async def setup_ticket(self, i: discord.Interaction):
         # Embed chuẩn thiết kế phân cấp chữ:
@@ -79,17 +83,17 @@ class TicketCog(commands.Cog):
         # Mô tả: Chữ đậm và chữ thường đan xen
         # Footer: Chữ nhỏ nhất
         embed = discord.Embed(
-            title="🎫 TRUNG TÂM HỖ TRỢ",
+            title="<:elfie_hug:1512859756862378046> Support Center",
             description=(
                 "**Chào mừng bạn đến với hệ thống hỗ trợ**\n\n"
-                "Vui lòng bấm vào nút bên dưới để mở ticket. Đội ngũ nhân viên sẽ liên hệ với bạn trong thời gian sớm nhất.\n"
+                "Vui lòng bấm vào nút bên dưới để mở ticket. Admin sẽ liên hệ với bạn trong thời gian sớm nhất.\n"
             ),
             color=0x007BFF
         )
         # Logo góc phải
         embed.set_thumbnail(url="https://i.pinimg.com/736x/b7/17/f8/b717f8505781eecc83f414cf1bb51470.jpg")
         # Footer (cỡ chữ nhỏ nhất)
-        embed.set_footer(text="⚠️ Lưu ý: Vui lòng không spam ticket để tránh bị khóa quyền.")
+        embed.set_footer(text="⚠️ Lưu ý: Spam ticket sẽ dẫn dến việc bị kick hoặc ban!")
         
         await i.channel.send(embed=embed, view=TicketLauncher())
         await i.response.send_message("Đã đăng Panel thành công!", ephemeral=True)
