@@ -2,51 +2,62 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 import asyncio
+import io
 
-# --- GIAO DIỆN NÚT BẤM KHI ĐÃ VÀO TICKET ---
+# --- NÚT ĐÓNG TICKET & LƯU TRANSCRIPT ---
 class TicketControls(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
     @discord.ui.button(label="Close Ticket", style=discord.ButtonStyle.danger, emoji="🔒", custom_id="close_ticket")
     async def close_ticket(self, i: discord.Interaction, b: discord.ui.Button):
-        await i.response.send_message("Ticket will be closed and channel deleted in 5 seconds...", ephemeral=True)
+        if not i.user.guild_permissions.manage_messages:
+            return await i.response.send_message("❌ Chỉ quản trị viên mới có quyền đóng ticket!", ephemeral=True)
+            
+        await i.response.send_message("🔒 Đang lưu transcript và đóng ticket trong 5 giây...", ephemeral=True)
+        
+        # 1. Thu thập tin nhắn
+        transcript = io.StringIO()
+        transcript.write(f"Transcript of ticket {i.channel.name}\n")
+        async for message in i.channel.history(limit=None, oldest_first=True):
+            transcript.write(f"{message.created_at} - {message.author}: {message.content}\n")
+        
+        transcript.seek(0)
+        file = discord.File(fp=transcript, filename=f"{i.channel.name}_transcript.txt")
+        
+        # 2. Gửi vào kênh log (Giả sử bạn có kênh tên 'ticket-logs')
+        log_channel = discord.utils.get(i.guild.text_channels, name="ticket-logs")
+        if log_channel:
+            await log_channel.send(f"Transcript cho {i.channel.name}:", file=file)
+        
+        # 3. Đóng kênh
         await asyncio.sleep(5)
         await i.channel.delete()
 
-# --- GIAO DIỆN PANEL CHÍNH (GIỐNG MẪU) ---
+# --- TICKET LAUNCHER ---
 class TicketLauncher(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
-    @discord.ui.select(
-        placeholder="Select a support category...", 
-        custom_id="ticket_menu",
-        options=[
-            discord.SelectOption(label="General Support", value="general", description="Need help with general questions?", emoji="🎫"),
-            discord.SelectOption(label="Report Player", value="report", description="Report rule breakers", emoji="⚠️"),
-            discord.SelectOption(label="Feedback", value="feedback", description="Have a suggestion for us?", emoji="💡")
-        ]
-    )
-    async def select_callback(self, i: discord.Interaction, select: discord.ui.Select):
+    async def create_ticket(self, i: discord.Interaction, category: str):
         guild = i.guild
-        # Thiết lập quyền hạn: Chỉ người mở ticket và Admin mới thấy
         overwrites = {
             guild.default_role: discord.PermissionOverwrite(read_messages=False),
             i.user: discord.PermissionOverwrite(read_messages=True, send_messages=True),
             guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True)
         }
-        
         channel = await guild.create_text_channel(f"ticket-{i.user.name}", overwrites=overwrites)
         
-        # Embed chào mừng bên trong ticket
-        embed = discord.Embed(
-            title=f"Support Ticket: {select.values[0].capitalize()}",
-            description=f"Welcome {i.user.mention}! Our staff will be with you shortly. Please describe your issue.",
-            color=discord.Color.green()
-        )
+        embed = discord.Embed(title=f"Support: {category}", description="Vui lòng mô tả vấn đề của bạn.", color=discord.Color.green())
         await channel.send(embed=embed, view=TicketControls())
-        await i.response.send_message(f"Your ticket has been created: {channel.mention}", ephemeral=True)
+        await i.response.send_message(f"Ticket đã tạo: {channel.mention}", ephemeral=True)
+
+    @discord.ui.button(label="Giải đáp thắc mắc cho thành viên server", style=discord.ButtonStyle.primary, emoji="🎫", custom_id="btn_general")
+    async def btn_general(self, i, b): await self.create_ticket(i, "Hỗ Trợ Chung")
+    @discord.ui.button(label="Tố cáo hành vi thành viên server", style=discord.ButtonStyle.danger, emoji="⚠️", custom_id="btn_report")
+    async def btn_report(self, i, b): await self.create_ticket(i, "Tố Cáo")
+    @discord.ui.button(label="Góp ý cho server và bot", style=discord.ButtonStyle.secondary, emoji="💡", custom_id="btn_feedback")
+    async def btn_feedback(self, i, b): await self.create_ticket(i, "Góp Ý")
 
 class TicketCog(commands.Cog):
     def __init__(self, bot):
@@ -54,25 +65,14 @@ class TicketCog(commands.Cog):
 
     @commands.Cog.listener()
     async def on_ready(self):
-        # Đăng ký View để các nút bấm hoạt động vĩnh viễn
         self.bot.add_view(TicketLauncher())
         self.bot.add_view(TicketControls())
-        print("-> Cog [Ticket] loaded!")
 
-    @app_commands.command(name="setup_ticket", description="Display the Ticket Panel")
+    @app_commands.command(name="setup_ticket", description="Thiết lập bảng Ticket")
     @app_commands.default_permissions(administrator=True)
-    async def setup_ticket(self, interaction: discord.Interaction):
-        # Embed Panel giống ảnh mẫu
-        embed = discord.Embed(
-            title="✨ Support Center", 
-            description="**Welcome to our Support Center.**\n\nIf you have any questions or need assistance, please open a ticket by selecting a category below.",
-            color=discord.Color.blue()
-        )
-        embed.set_thumbnail(url="https://i.pinimg.com/736x/b7/17/f8/b717f8505781eecc83f414cf1bb51470.jpg") 
-        embed.set_footer(text="Please do not abuse the ticket system.")
-        
-        await interaction.channel.send(embed=embed, view=TicketLauncher())
-        await interaction.response.send_message("Ticket Panel posted!", ephemeral=True)
+    async def setup_ticket(self, i: discord.Interaction):
+        embed = discord.Embed(title="✨ Support Center", description="Chọn mục để mở ticket.", color=discord.Color.blue())
+        await i.channel.send(embed=embed, view=TicketLauncher())
+        await i.response.send_message("Xong!", ephemeral=True)
 
-async def setup(bot):
-    await bot.add_cog(TicketCog(bot))
+async def setup(bot): await bot.add_cog(TicketCog(bot))
