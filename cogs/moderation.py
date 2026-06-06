@@ -146,7 +146,7 @@ class Moderation(commands.Cog):
         return None
 
     # ================= 1. SCAN ACTIVITY (LẬT TRANG) =================
-    @app_commands.command(name="scan_activity", description="List members activity in the last 30 days (Leaderboard style)")
+    @app_commands.command(name="scan_activity", description="List members activity in the last 30 days")
     @app_commands.default_permissions(kick_members=True)
     async def scan_activity(self, interaction: discord.Interaction):
         await interaction.response.defer()
