@@ -6,6 +6,61 @@ import sqlite3
 import database
 
 # ========================================================
+# VIEW: EMBED PAGINATION (NÚT LẬT TRANG)
+# ========================================================
+class ActivityPaginationView(discord.ui.View):
+    def __init__(self, data_chunks, title):
+        super().__init__(timeout=600) # Tồn tại 10 phút
+        self.data_chunks = data_chunks
+        self.title = title
+        self.current_page = 0
+        self.max_page = len(data_chunks) - 1
+        self.update_buttons()
+
+    def update_buttons(self):
+        self.first_page_btn.disabled = self.current_page == 0
+        self.prev_page_btn.disabled = self.current_page == 0
+        self.next_page_btn.disabled = self.current_page == self.max_page
+        self.last_page_btn.disabled = self.current_page == self.max_page
+
+    def get_embed(self):
+        # Tạo Embed giống mẫu hình ảnh
+        embed = discord.Embed(
+            title=self.title, 
+            description=self.data_chunks[self.current_page], 
+            color=0x2b2d31 # Màu nền tối sang trọng
+        )
+        # Footer hiển thị trang và thời gian
+        time_now = discord.utils.utcnow().strftime('%d/%m/%Y, %H:%M')
+        embed.set_footer(text=f"Page {self.current_page + 1} • {time_now}")
+        return embed
+
+    @discord.ui.button(emoji="⏪", style=discord.ButtonStyle.secondary)
+    async def first_page_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        self.current_page = 0
+        self.update_buttons()
+        await interaction.response.edit_message(embed=self.get_embed(), view=self)
+
+    @discord.ui.button(emoji="⬅️", style=discord.ButtonStyle.primary)
+    async def prev_page_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        self.current_page -= 1
+        self.update_buttons()
+        await interaction.response.edit_message(embed=self.get_embed(), view=self)
+
+    @discord.ui.button(emoji="➡️", style=discord.ButtonStyle.primary)
+    async def next_page_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        self.current_page += 1
+        self.update_buttons()
+        await interaction.response.edit_message(embed=self.get_embed(), view=self)
+
+    @discord.ui.button(emoji="⏩", style=discord.ButtonStyle.secondary)
+    async def last_page_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        self.current_page = self.max_page
+        self.update_buttons()
+        await interaction.response.edit_message(embed=self.get_embed(), view=self)
+
+
+# ========================================================
 # AUTO-PUNISHMENT SYSTEM
 # ========================================================
 async def apply_auto_punishment(interaction_or_message, member: discord.Member, warn_count: int):
@@ -47,7 +102,6 @@ class Moderation(commands.Cog):
 
     @commands.Cog.listener()
     async def on_ready(self):
-        # INITIALIZE DAILY MESSAGE COUNT DATABASE
         conn = sqlite3.connect('bot_database.db')
         cursor = conn.cursor()
         cursor.execute("""
@@ -59,17 +113,14 @@ class Moderation(commands.Cog):
             )
         """)
         
-        # Cleanup: Automatically delete records older than 30 days
         thirty_days_ago = (discord.utils.utcnow() - datetime.timedelta(days=30)).strftime('%Y-%m-%d')
         cursor.execute("DELETE FROM DailyMessageCount WHERE date_str < ?", (thirty_days_ago,))
-        
         conn.commit()
         conn.close()
-        print("-> Cog [Moderation] loaded successfully! (Detailed version with Bulk Kick)")
+        print("-> Cog [Moderation] loaded successfully! (Pagination UI version)")
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
-        # Silently log and count messages
         if message.author.bot or not message.guild:
             return
             
@@ -87,7 +138,6 @@ class Moderation(commands.Cog):
         conn.commit()
         conn.close()
 
-    # Role Hierarchy Check (Shared Utility)
     def check_hierarchy(self, interaction: discord.Interaction, member: discord.Member):
         if member.top_role >= interaction.guild.me.top_role:
             return "❌ I cannot punish a user whose role is higher than or equal to mine!"
@@ -95,16 +145,14 @@ class Moderation(commands.Cog):
             return "❌ You cannot punish yourself!"
         return None
 
-    # ================= 1. SCAN ACTIVITY =================
-    @app_commands.command(name="scan_activity", description="List members activity in the last 30 days")
+    # ================= 1. SCAN ACTIVITY (LẬT TRANG) =================
+    @app_commands.command(name="scan_activity", description="List members activity in the last 30 days (Leaderboard style)")
     @app_commands.default_permissions(kick_members=True)
     async def scan_activity(self, interaction: discord.Interaction):
-        # Defer the response as compiling a large list might take a few seconds
         await interaction.response.defer()
         
         thirty_days_ago = (discord.utils.utcnow() - datetime.timedelta(days=30)).strftime('%Y-%m-%d')
         
-        # Retrieve data from Database
         conn = sqlite3.connect('bot_database.db')
         cursor = conn.cursor()
         cursor.execute("""
@@ -112,64 +160,78 @@ class Moderation(commands.Cog):
             FROM DailyMessageCount 
             WHERE date_str >= ? 
             GROUP BY user_id
-            ORDER BY SUM(msg_count) ASC
         """, (thirty_days_ago,))
         
         active_data = {row[0]: row[1] for row in cursor.fetchall()}
         conn.close()
 
-        lines = ["**Rank | Name | Messages (30d) | ID**"]
-        
-        # Filter out bots and assign indices
         valid_members = [m for m in interaction.guild.members if not m.bot]
+        # QUAN TRỌNG: Sắp xếp người nhắn ít nhất (0 tin) lên đầu!
+        valid_members.sort(key=lambda m: active_data.get(m.id, 0))
+
+        pages_data = []
+        current_page_lines = []
         
         for idx, member in enumerate(valid_members, 1):
             count = active_data.get(member.id, 0)
-            # Formatting to align columns nicely
-            line = f"`{idx:03}` | {member.display_name[:15]:<15} | {count:<10} | `{member.id}`"
-            lines.append(line)
+            # Format: **1.** tên_người_dùng ( @Tên ): **X messages**
+            line = f"**{idx}.** {member.name} ( {member.mention} ): **{count} messages** `({member.id})`"
+            current_page_lines.append(line)
+            
+            # Cứ đủ 10 người thì ngắt thành 1 trang
+            if len(current_page_lines) == 10:
+                pages_data.append("\n".join(current_page_lines))
+                current_page_lines = []
+                
+        # Thêm những người còn lẻ tẻ vào trang cuối
+        if current_page_lines:
+            pages_data.append("\n".join(current_page_lines))
 
-        # Discord has a 2000 character limit per message, so we send in chunks of 20
-        if len(lines) == 1:
+        if not pages_data:
             return await interaction.followup.send("✅ No members found to scan.")
 
-        for i in range(0, len(lines), 20):
-            chunk = "\n".join(lines[i:i+20])
-            await interaction.followup.send(chunk)
+        # Khởi tạo giao diện lật trang và gửi
+        view = ActivityPaginationView(pages_data, "Inactive Members Scan (30 Days)")
+        await interaction.followup.send(embed=view.get_embed(), view=view)
+
 
     # ================= 2. BULK KICK =================
     @app_commands.command(name="bulk_kick", description="Kick multiple members using their ID or Rank index")
-    @app_commands.describe(targets="Enter IDs or Rank indices separated by comma (e.g., 001, 005, 123456789)")
+    @app_commands.describe(targets="Enter IDs or Rank indices separated by comma (e.g., 1, 5, 123456789)")
     @app_commands.default_permissions(kick_members=True)
     async def bulk_kick(self, interaction: discord.Interaction, targets: str, reason: str = "Inactive for 30 days"):
-        # Defer and make it ephemeral so the target list is hidden
         await interaction.response.defer(ephemeral=True)
         
+        # ĐỒNG BỘ LOGIC SẮP XẾP VỚI LỆNH SCAN
+        thirty_days_ago = (discord.utils.utcnow() - datetime.timedelta(days=30)).strftime('%Y-%m-%d')
+        conn = sqlite3.connect('bot_database.db')
+        cursor = conn.cursor()
+        cursor.execute("SELECT user_id, SUM(msg_count) FROM DailyMessageCount WHERE date_str >= ? GROUP BY user_id", (thirty_days_ago,))
+        active_data = {row[0]: row[1] for row in cursor.fetchall()}
+        conn.close()
+
         valid_members = [m for m in interaction.guild.members if not m.bot]
-        target_inputs = [t.strip() for t in targets.split(",") if t.strip()]
+        valid_members.sort(key=lambda m: active_data.get(m.id, 0)) # Sort y hệt như lúc nãy
         
+        target_inputs = [t.strip() for t in targets.split(",") if t.strip()]
         kicked_names = []
         failed_names = []
 
         for target in target_inputs:
             member = None
-            # Check if input is a 1-3 digit index (e.g., 1, 05, 012)
             if target.isdigit() and len(target) <= 3:
                 idx = int(target) - 1
                 if 0 <= idx < len(valid_members):
                     member = valid_members[idx]
-            # Otherwise treat as Discord ID
             elif target.isdigit():
                 member = interaction.guild.get_member(int(target))
 
             if member:
-                # Check hierarchy before kicking
                 if self.check_hierarchy(interaction, member):
                     failed_names.append(member.name)
                     continue
                     
                 try:
-                    # Attempt DM
                     try:
                         await member.send(f"You have been kicked from {interaction.guild.name}. Reason: {reason}")
                     except discord.HTTPException:
@@ -180,9 +242,8 @@ class Moderation(commands.Cog):
                 except discord.Forbidden:
                     failed_names.append(member.name)
             else:
-                failed_names.append(target) # Invalid target
+                failed_names.append(target) 
 
-        # Compile Result Message
         result_msg = ""
         if kicked_names:
             result_msg += f"✅ Successfully kicked: **{', '.join(kicked_names)}**\n"
@@ -193,6 +254,7 @@ class Moderation(commands.Cog):
             result_msg = "⚠️ No valid targets found."
             
         await interaction.followup.send(result_msg)
+
 
     # ================= 3. KICK COMMAND =================
     @app_commands.command(name="kick", description="Kick a member from the server")
