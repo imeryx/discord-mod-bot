@@ -31,7 +31,7 @@ class TicketControls(discord.ui.View):
         file = discord.File(fp=transcript, filename=f"ticket_{i.channel.name}.txt")
         
         # Gửi vào kênh log 'ticket-logs'
-        log_channel = discord.utils.get(i.guild.text_channels, name="ticket-logs")
+        log_channel = discord.utils.get(i.guild.text_channels, name="┇﹒ticket-logs⸝⸝")
         if log_channel:
             await log_channel.send(f"📋 **Transcript ticket:** {i.channel.name}", file=file)
             
