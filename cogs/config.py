@@ -11,28 +11,6 @@ class Config(commands.Cog):
     async def on_ready(self):
         print("-> Cog [Config] đã được tải thành công!")
 
-    # ================= 1. LỆNH THIẾT LẬP KÊNH LOG =================
-    @app_commands.command(name="setlog", description="Thiết lập kênh gửi báo cáo nhật ký (Audit Logs) cho server")
-    @app_commands.default_permissions(manage_guild=True) # Chỉ Quản trị viên có quyền quản lý server mới được dùng
-    @app_commands.describe(channel="Chọn kênh text bạn muốn bot gửi thông báo vào")
-    async def setlog(self, interaction: discord.Interaction, channel: discord.TextChannel):
-        try:
-            # Lưu ID của kênh vào Database
-            database.set_log_channel(interaction.guild.id, channel.id)
-            
-            # Phản hồi ẩn cho Mod thiết lập lệnh
-            await interaction.response.send_message(f"✅ Đã thiết lập kênh nhật ký thành công tại {channel.mention}!", ephemeral=True)
-            
-            # Gửi thông báo chào mừng hệ thống kích hoạt vào kênh log được chọn
-            embed = discord.Embed(
-                title="⚙️ Hệ thống Nhật ký đã được kích hoạt!",
-                description="Từ bây giờ, mọi hành động xóa/sửa tin nhắn sẽ được báo cáo tại đây.",
-                color=discord.Color.green()
-            )
-            await channel.send(embed=embed)
-            
-        except Exception as e:
-            await interaction.response.send_message(f"❌ Có lỗi xảy ra khi lưu cấu hình: {e}", ephemeral=True)
 
     # ================= 2. LỆNH THIẾT LẬP PREFIX =================
     @app_commands.command(name="setprefix", description="Thay đổi prefix cho các lệnh cổ điển của server")
