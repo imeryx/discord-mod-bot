@@ -154,11 +154,24 @@ class SecurityCog(commands.Cog):
                 self.spam_tracker[user_id].clear()
             except discord.Forbidden: pass
 
-    # --- SETUP COMMAND ---
+    # --------------------------------------------------------
+    # SECURITY SETUP COMMAND
+    # --------------------------------------------------------
     @app_commands.command(name="setup_security", description="Set up the verification gate and Anti-Nuke alert channel")
     @app_commands.default_permissions(administrator=True)
-    async def setup_security(self, i: discord.Interaction, verify_role: discord.Role, log_channel: discord.TextChannel = None):
+    async def setup_security(
+        self, 
+        i: discord.Interaction, 
+        verify_role: discord.Role, 
+        target_channel: discord.TextChannel = None, # Đã thêm tùy chọn kênh gửi Panel
+        log_channel: discord.TextChannel = None
+    ):
+        await i.response.defer(ephemeral=True) # Tránh lỗi "Interaction failed" nếu bot xử lý chậm
+
         log_id = log_channel.id if log_channel else None
+        
+        # Nếu bạn không chọn target_channel, bot sẽ gửi ở kênh bạn đang gõ lệnh
+        send_channel = target_channel or i.channel
         
         conn = sqlite3.connect('bot_database.db')
         conn.execute(
@@ -176,13 +189,18 @@ class SecurityCog(commands.Cog):
             ),
             color=0x2b2d31
         )
-        embed.set_thumbnail(url="https://cdn-icons-png.flaticon.com/512/2097/2097782.png")
-        embed.set_footer(text="Automated Anti-Raid System | Protected by Bot")
+        embed.set_thumbnail(url="https://cdn-icons-png.flaticon.com/512/1161/1161388.png")
+        embed.set_footer(text="Automated Anti-Raid System | Protected by Elfaria Bot")
 
-        await i.channel.send(embed=embed, view=VerifyPanel())
+        # Gửi Panel vào đúng kênh bạn đã chọn
+        await send_channel.send(embed=embed, view=VerifyPanel())
         
-        msg = f"✅ Verification gate set up successfully! Users will receive the role {verify_role.mention}."
-        if log_channel: msg += f"\n🚨 Anti-Nuke Alert Channel: {log_channel.mention}"
-        await i.response.send_message(msg, ephemeral=True)
+        msg = f"✅ Verification gate set up successfully in {send_channel.mention}! Users will receive the role {verify_role.mention}."
+        if log_channel: 
+            msg += f"\n🚨 Anti-Nuke Alert Channel: {log_channel.mention}"
+        else:
+            msg += f"\n⚠️ Warning: No log_channel selected. Anti-Nuke alerts will not be sent anywhere."
+            
+        await i.followup.send(msg)
 
 async def setup(bot): await bot.add_cog(SecurityCog(bot))
