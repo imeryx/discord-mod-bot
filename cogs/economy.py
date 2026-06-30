@@ -3,6 +3,9 @@ from discord.ext import commands
 from discord import app_commands
 import sqlite3
 import random
+import io
+import requests
+from PIL import Image, ImageDraw, ImageFont, ImageOps
 
 # ==========================================
 # 1. HỆ THỐNG EMOJI VÀ DỮ LIỆU VẬT PHẨM
@@ -16,12 +19,11 @@ class SYS_EMOJIS:
     SINGLE = "🕸️"
     MARRIED = "💒"
     
-    # 5 Cấp độ nhẫn (Bạn có thể thay ID custom emoji của server vào)
     RING_PLASTIC = "<:plastic_ring:1521432439476715540>" 
     RING_SILVER = "<:silver_ring:1521432589422956766>"
     RING_GOLD = "<:gold_ring:1521432692774932543>"
     RING_DIAMOND = "<:diamond_ring:1521432786701914142>"
-    RING_ASTRITE = "<:astrite_ring:1521432868729917510>" # Hoặc dùng <a:astrite:123456789>
+    RING_ASTRITE = "<:astrite_ring:1521432868729917510>"
 
 RING_SHOP = {
     "plastic": {"price": 1000, "name": "Plastic Ring", "emoji": SYS_EMOJIS.RING_PLASTIC, "tier": 1},
@@ -87,77 +89,20 @@ class EconomyCog(commands.Cog):
 
     def setup_database(self):
         conn = sqlite3.connect('bot_database.db')
-        
-    # HÀM VẼ PROFILE (DÙNG PILLOW)
-    # ==========================================
-    async def create_profile_card(self, user, balance, partner_name, bg_key):
-        # 1. Lấy hình nền
-        bg_url = self.BG_SHOP.get(bg_key, self.BG_SHOP["minimal"])["url"]
-        response = requests.get(bg_url)
-        base = Image.open(io.BytesIO(response.content)).convert("RGBA")
-        base = base.resize((900, 500)) # Kích thước chuẩn cho thẻ profile
-
-        # 2. Tạo lớp phủ mờ (Dark Overlay) để chữ dễ đọc hơn
-        overlay = Image.new("RGBA", (900, 500), (0, 0, 0, 0))
-        draw = ImageDraw.Draw(overlay)
-        # Vẽ một hình chữ nhật đen mờ ở giữa
-        draw.rounded_rectangle((50, 50, 850, 450), radius=30, fill=(0, 0, 0, 160))
-        base = Image.alpha_composite(base, overlay)
-
-        # 3. Vẽ Avatar
-        avatar_url = user.display_avatar.url
-        response_avatar = requests.get(avatar_url)
-        avatar = Image.open(io.BytesIO(response_avatar.content)).convert("RGBA")
-        avatar = avatar.resize((150, 150))
-        
-        # Làm avatar hình tròn
-        mask = Image.new("L", (150, 150), 0)
-        draw_mask = ImageDraw.Draw(mask)
-        draw_mask.ellipse((0, 0, 150, 150), fill=255)
-        avatar = ImageOps.fit(avatar, mask.size, centering=(0.5, 0.5))
-        avatar.putalpha(mask)
-        
-        base.paste(avatar, (100, 100), avatar)
-
-        # 4. Viết chữ (Sử dụng font mặc định nếu không có file font)
-        draw_text = ImageDraw.Draw(base)
-        
-        # Chỉnh font (Bạn có thể tải file .ttf lên VPS để có font đẹp hơn)
-        try:
-            font_name = ImageFont.truetype("arial.ttf", 50)
-            font_info = ImageFont.truetype("arial.ttf", 35)
-        except:
-            font_name = ImageFont.load_default()
-            font_info = ImageFont.load_default()
-
-        # Vẽ tên User
-        draw_text.text((280, 120), f"{user.display_name}", font=font_name, fill="white")
-        
-        # Vẽ ví tiền
-        draw_text.text((280, 220), f"💰 Wallet: {balance:,} Coins", font=font_info, fill="#FFD700")
-        
-        # Vẽ trạng thái kết hôn
-        status_color = "#FF69B4" if partner_name != "Single" else "#AAAAAA"
-        draw_text.text((280, 300), f"❤️ Status: {partner_name}", font=font_info, fill=status_color)
-
-        # 5. Xuất ảnh
-        buffer = io.BytesIO()
-        base.save(buffer, format="PNG")
-        buffer.seek(0)
-        return discord.File(buffer, filename="profile.png")
-        # 1. Vẫn giữ lệnh tạo bảng gốc để đề phòng trường hợp file chưa từng tồn tại
+        # Tạo bảng gốc
         conn.execute('''CREATE TABLE IF NOT EXISTS Economy (
                         user_id INTEGER PRIMARY KEY,
                         balance INTEGER DEFAULT 0,
                         partner_id INTEGER DEFAULT NULL
                     )''')
+        # Tạo bảng lưu lịch sử hình nền đã mua
         conn.execute('''CREATE TABLE IF NOT EXISTS OwnedBackgrounds (
                         user_id INTEGER,
                         bg_key TEXT,
                         PRIMARY KEY(user_id, bg_key)
                     )''')
                     
-        # 2. Nâng cấp cấu trúc (Migration) - Thêm các cột mới một cách an toàn
+        # Nâng cấp cấu trúc (Migration)
         new_columns = [
             ("ring_plastic", "INTEGER DEFAULT 0"),
             ("ring_silver", "INTEGER DEFAULT 0"),
@@ -170,14 +115,13 @@ class EconomyCog(commands.Cog):
         
         for col_name, col_type in new_columns:
             try:
-                # Lệnh ALTER TABLE dùng để nhét thêm cột mới vào bảng đang có sẵn dữ liệu
                 conn.execute(f"ALTER TABLE Economy ADD COLUMN {col_name} {col_type}")
             except sqlite3.OperationalError:
-                # Nếu SQLite báo lỗi "Cột này đã tồn tại", bot sẽ lơ đi và chạy tiếp
                 pass
                 
         conn.commit()
         conn.close()
+
     def check_user(self, user_id):
         conn = sqlite3.connect('bot_database.db')
         conn.execute("INSERT OR IGNORE INTO Economy (user_id) VALUES (?)", (user_id,))
@@ -186,17 +130,97 @@ class EconomyCog(commands.Cog):
 
     @commands.Cog.listener()
     async def on_ready(self):
-        print("-> Cog [Economy V2] loaded successfully with 5-Tier Rings & Divorce!")
+        print("-> Cog [Economy V2] loaded successfully with 5-Tier Rings, Pillow Profile & Divorce!")
 
-    # ------------------------------------------
-    # LỆNH CÀY TIỀN (WORK) VỚI CÁC NHIỆM VỤ ĐA DẠNG
-    # ------------------------------------------
+    # ==========================================
+    # HÀM VẼ PROFILE (DÙNG PILLOW) VỚI THIẾT KẾ XỊN XÒ
+    # ==========================================
+    async def create_profile_card(self, user, balance, partner_name, bg_key):
+        # 1. Khởi tạo hình nền và kích thước chuẩn
+        bg_url = BG_SHOP.get(bg_key, list(BG_SHOP.values())[0])["url"]
+        try:
+            response = requests.get(bg_url, timeout=5)
+            base = Image.open(io.BytesIO(response.content)).convert("RGBA")
+        except:
+            # Fallback nếu link ảnh lỗi: Tạo một nền màu xám đen
+            base = Image.new("RGBA", (900, 300), (43, 45, 49, 255)) 
+            
+        base = base.resize((900, 300)) # Profile dạng thẻ ngang mỏng sẽ sang trọng hơn
+
+        # 2. Tạo lớp phủ (Dark Overlay) để làm nổi bật chữ
+        overlay = Image.new("RGBA", (900, 300), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(overlay)
+        # Vẽ khung đen mờ bo góc
+        draw.rounded_rectangle((20, 20, 880, 280), radius=20, fill=(0, 0, 0, 140))
+        base = Image.alpha_composite(base, overlay)
+
+        # 3. Vẽ Avatar (Cắt tròn và thêm viền)
+        avatar_size = 180
+        try:
+            avatar_url = user.display_avatar.url
+            response_avatar = requests.get(avatar_url, timeout=5)
+            avatar = Image.open(io.BytesIO(response_avatar.content)).convert("RGBA")
+        except:
+            avatar = Image.new("RGBA", (avatar_size, avatar_size), (100, 100, 100, 255))
+            
+        avatar = avatar.resize((avatar_size, avatar_size))
+        
+        # Tạo mask hình tròn
+        mask = Image.new("L", (avatar_size, avatar_size), 0)
+        draw_mask = ImageDraw.Draw(mask)
+        draw_mask.ellipse((0, 0, avatar_size, avatar_size), fill=255)
+        avatar = ImageOps.fit(avatar, mask.size, centering=(0.5, 0.5))
+        avatar.putalpha(mask)
+        
+        # Vẽ viền (Ring) quanh avatar
+        ring_color = (255, 215, 0, 255) # Màu Vàng Gold
+        ring_size = avatar_size + 10
+        avatar_ring = Image.new("RGBA", (ring_size, ring_size), (0, 0, 0, 0))
+        ring_draw = ImageDraw.Draw(avatar_ring)
+        ring_draw.ellipse((0, 0, ring_size, ring_size), outline=ring_color, width=5)
+        
+        avatar_ring.paste(avatar, (5, 5), avatar)
+        base.paste(avatar_ring, (50, 55), avatar_ring)
+
+        # 4. Viết chữ
+        draw_text = ImageDraw.Draw(base)
+        
+        try:
+            font_title = ImageFont.truetype("Roboto-Bold.ttf", 55)
+            font_stats = ImageFont.truetype("Roboto-Bold.ttf", 35)
+            font_small = ImageFont.truetype("Roboto-Bold.ttf", 25)
+        except:
+            font_title = ImageFont.load_default()
+            font_stats = ImageFont.load_default()
+            font_small = ImageFont.load_default()
+
+        text_start_x = 280
+        
+        draw_text.text((text_start_x, 60), f"{user.display_name}", font=font_title, fill=(255, 255, 255, 255))
+        draw_text.line([(text_start_x, 130), (840, 130)], fill=(255, 255, 255, 100), width=2)
+
+        draw_text.text((text_start_x, 150), f"💳 WALLET", font=font_small, fill=(200, 200, 200, 255))
+        draw_text.text((text_start_x, 180), f"{balance:,} Coins", font=font_stats, fill=(255, 215, 0, 255)) 
+        
+        status_color = (255, 105, 180, 255) if partner_name != "Single" else (170, 170, 170, 255)
+        draw_text.text((580, 150), f"❤️ RELATIONSHIP", font=font_small, fill=(200, 200, 200, 255))
+        draw_text.text((580, 180), f"{partner_name}", font=font_stats, fill=status_color)
+
+        # 5. Xuất ảnh
+        buffer = io.BytesIO()
+        base.save(buffer, format="PNG")
+        buffer.seek(0)
+        return discord.File(buffer, filename=f"profile_{user.name}.png")
+
+    # ==========================================
+    # CÁC LỆNH CHÍNH (SLASH COMMANDS)
+    # ==========================================
+    
     @app_commands.command(name="work", description="Do some tasks to earn coins!")
     @app_commands.checks.cooldown(1, 1800, key=lambda i: i.user.id) # Cooldown 30 phút
     async def work(self, i: discord.Interaction):
         self.check_user(i.user.id)
         
-        # Hệ thống nhiệm vụ thường ngày quen thuộc
         tasks = [
             "Bạn đi làm thêm ca tối tại cửa hàng tiện lợi",
             "Bạn phụ giúp gia đình dọn dẹp nhà cửa gọn gàng",
@@ -211,7 +235,7 @@ class EconomyCog(commands.Cog):
         ]
         
         task_done = random.choice(tasks)
-        earned = random.randint(1000, 5000) # Lương dao động từ 1k đến 5k
+        earned = random.randint(1000, 5000)
         
         conn = sqlite3.connect('bot_database.db')
         conn.execute("UPDATE Economy SET balance = balance + ? WHERE user_id = ?", (earned, i.user.id))
@@ -228,15 +252,13 @@ class EconomyCog(commands.Cog):
             minutes, seconds = divmod(int(error.retry_after), 60)
             await i.response.send_message(f"⏳ You need to rest! Try again in **{minutes}m {seconds}s**.", ephemeral=True)
 
-    # ------------------------------------------
-    # LỆNH PROFILE NÂNG CẤP
-    # ==========================================
     @app_commands.command(name="profile", description="View your professional profile card")
     async def profile(self, i: discord.Interaction, member: discord.Member = None):
-        await i.response.defer() # Cần defer vì xử lý ảnh mất thời gian
+        await i.response.defer() 
         
         target = member or i.user
         user_id = target.id
+        self.check_user(user_id)
         
         conn = sqlite3.connect('bot_database.db')
         cursor = conn.execute("SELECT balance, active_bg, partner_id FROM Economy WHERE user_id = ?", (user_id,))
@@ -248,33 +270,33 @@ class EconomyCog(commands.Cog):
 
         balance, active_bg, partner_id = data
         
-        # Lấy tên người bạn đời
         partner_name = "Single"
         if partner_id:
-            partner_user = self.bot.get_user(partner_id) or await self.bot.fetch_user(partner_id)
-            partner_name = f"Married to {partner_user.name}"
+            try:
+                partner_user = self.bot.get_user(partner_id) or await self.bot.fetch_user(partner_id)
+                partner_name = partner_user.name
+                if len(partner_name) > 12:
+                    partner_name = partner_name[:10] + "..."
+            except:
+                partner_name = "Unknown"
             
         conn.close()
 
-        # Tạo file ảnh
-        profile_file = await self.create_profile_card(target, balance, partner_name, active_bg or "minimal")
-        
-        await i.followup.send(file=profile_file)
+        try:
+            profile_file = await self.create_profile_card(target, balance, partner_name, active_bg or "Background 1")
+            await i.followup.send(file=profile_file)
+        except Exception as e:
+            await i.followup.send(f"❌ Failed to generate profile card. Error: `{e}`")
 
-    # ------------------------------------------
-    # HỆ THỐNG CỬA HÀNG VÀ MUA SẮM
-    # ------------------------------------------
     @app_commands.command(name="shop", description="View the item and background shop")
     async def shop(self, i: discord.Interaction):
         embed = discord.Embed(title=f"{SYS_EMOJIS.SHOP} Server Shop", description="Use `/buy_ring` or `/buy_bg` to purchase.", color=0xffd700)
         
-        # In danh sách nhẫn
         rings_text = ""
         for key, info in RING_SHOP.items():
             rings_text += f"{info['emoji']} **{info['name']}** (`{key}`): {info['price']:,} {SYS_EMOJIS.COIN}\n"
         embed.add_field(name="💍 Marriage Rings", value=rings_text, inline=False)
 
-        # In danh sách Background
         bg_text = ""
         for key, info in BG_SHOP.items():
             bg_text += f"🖼️ **{info['name']}** (`{key}`): {info['price']:,} {SYS_EMOJIS.COIN}\n"
@@ -326,10 +348,8 @@ class EconomyCog(commands.Cog):
         
         await i.response.send_message(f"🖼️ You bought and equipped the **{BG_SHOP[bg_type]['name']}** background! Check `/profile`.")
 
-    # 2. TẠO LỆNH MỚI: /equip_bg (Để thay đổi background cũ)
     @app_commands.command(name="equip_bg", description="Equip a background you already own")
     async def equip_bg(self, i: discord.Interaction):
-        # Lấy danh sách những cái đã mua
         conn = sqlite3.connect('bot_database.db')
         cursor = conn.execute("SELECT bg_key FROM OwnedBackgrounds WHERE user_id = ?", (i.user.id,))
         owned = cursor.fetchall()
@@ -338,7 +358,6 @@ class EconomyCog(commands.Cog):
             conn.close()
             return await i.response.send_message("❌ You don't own any background yet. Go to `/shop` to buy one!", ephemeral=True)
 
-        # Tạo View để chọn background đã sở hữu
         options = [discord.SelectOption(label=BG_SHOP[row[0]]["name"], value=row[0]) for row in owned]
         
         class SelectBgView(discord.ui.View):
@@ -354,9 +373,6 @@ class EconomyCog(commands.Cog):
         await i.response.send_message("Pick your background:", view=SelectBgView(), ephemeral=True)
         conn.close()
 
-    # ------------------------------------------
-    # TÍNH NĂNG KẾT HÔN & LY HÔN
-    # ------------------------------------------
     @app_commands.command(name="marry", description="Propose to another user!")
     @app_commands.choices(ring_type=[app_commands.Choice(name=v["name"], value=k) for k, v in RING_SHOP.items()])
     async def marry(self, i: discord.Interaction, member: discord.Member, ring_type: str):
@@ -396,13 +412,13 @@ class EconomyCog(commands.Cog):
             conn.close()
             return await i.response.send_message("❌ You are not married to anyone!", ephemeral=True)
 
-        # Hủy quan hệ của cả 2 người trong Database
         conn.execute("UPDATE Economy SET partner_id = NULL, marriage_ring = NULL WHERE user_id = ?", (i.user.id,))
         conn.execute("UPDATE Economy SET partner_id = NULL, marriage_ring = NULL WHERE user_id = ?", (partner_id,))
         conn.commit()
         conn.close()
 
         await i.response.send_message(f"💔 You have officially divorced <@{partner_id}>. You are now single.")
+
     @app_commands.command(name="dev_give", description="[ADMIN ONLY] Give Money or Rings for testing")
     @app_commands.describe(
         give_type="Choose what to give",
@@ -417,7 +433,6 @@ class EconomyCog(commands.Cog):
         app_commands.Choice(name="Astrite Ring", value="ring_astrite")
     ])
     async def dev_give(self, i: discord.Interaction, give_type: str, amount: int):
-        # THAY ID CỦA BẠN VÀO ĐÂY
         MY_DISCORD_ID = 834054385746575380 
         
         if i.user.id != MY_DISCORD_ID:
@@ -436,7 +451,6 @@ class EconomyCog(commands.Cog):
         conn.commit()
         conn.close()
         await i.response.send_message(msg, ephemeral=True)
+
 async def setup(bot):
     await bot.add_cog(EconomyCog(bot))
-
-    
