@@ -6,6 +6,7 @@ import random
 import io
 import requests
 from PIL import Image, ImageDraw, ImageFont, ImageOps
+from pilmoji import Pilmoji
 
 # ==========================================
 # 1. HỆ THỐNG EMOJI VÀ DỮ LIỆU VẬT PHẨM
@@ -19,6 +20,7 @@ class SYS_EMOJIS:
     SINGLE = "🕸️"
     MARRIED = "💒"
     
+    # 5 Cấp độ nhẫn
     RING_PLASTIC = "<:plastic_ring:1521432439476715540>" 
     RING_SILVER = "<:silver_ring:1521432589422956766>"
     RING_GOLD = "<:gold_ring:1521432692774932543>"
@@ -58,11 +60,9 @@ class ProposalView(discord.ui.View):
         self.stop()
         conn = sqlite3.connect('bot_database.db')
         
-        # Cập nhật trạng thái kết hôn cho cả 2
         conn.execute("UPDATE Economy SET partner_id = ?, marriage_ring = ? WHERE user_id = ?", (self.target.id, self.ring_type, self.proposer.id))
         conn.execute("UPDATE Economy SET partner_id = ?, marriage_ring = ? WHERE user_id = ?", (self.proposer.id, self.ring_type, self.target.id))
         
-        # Trừ nhẫn của người cầu hôn
         col_name = f"ring_{self.ring_type}"
         conn.execute(f"UPDATE Economy SET {col_name} = {col_name} - 1 WHERE user_id = ?", (self.proposer.id,))
         conn.commit()
@@ -89,20 +89,17 @@ class EconomyCog(commands.Cog):
 
     def setup_database(self):
         conn = sqlite3.connect('bot_database.db')
-        # Tạo bảng gốc
         conn.execute('''CREATE TABLE IF NOT EXISTS Economy (
                         user_id INTEGER PRIMARY KEY,
                         balance INTEGER DEFAULT 0,
                         partner_id INTEGER DEFAULT NULL
                     )''')
-        # Tạo bảng lưu lịch sử hình nền đã mua
         conn.execute('''CREATE TABLE IF NOT EXISTS OwnedBackgrounds (
                         user_id INTEGER,
                         bg_key TEXT,
                         PRIMARY KEY(user_id, bg_key)
                     )''')
                     
-        # Nâng cấp cấu trúc (Migration)
         new_columns = [
             ("ring_plastic", "INTEGER DEFAULT 0"),
             ("ring_silver", "INTEGER DEFAULT 0"),
@@ -130,32 +127,30 @@ class EconomyCog(commands.Cog):
 
     @commands.Cog.listener()
     async def on_ready(self):
-        print("-> Cog [Economy V2] loaded successfully with 5-Tier Rings, Pillow Profile & Divorce!")
+        print("-> Cog [Economy V3] loaded successfully with HD Pilmoji Profile!")
 
     # ==========================================
-    # HÀM VẼ PROFILE (DÙNG PILLOW) VỚI THIẾT KẾ XỊN XÒ
+    # HÀM VẼ PROFILE V2 (HỖ TRỢ EMOJI & KÍCH THƯỚC LỚN)
     # ==========================================
-    async def create_profile_card(self, user, balance, partner_name, bg_key):
-        # 1. Khởi tạo hình nền và kích thước chuẩn
+    async def create_profile_card(self, user, balance, partner_name, ring_emoji, bg_key):
+        # 1. Khởi tạo hình nền 1000x400
         bg_url = BG_SHOP.get(bg_key, list(BG_SHOP.values())[0])["url"]
         try:
             response = requests.get(bg_url, timeout=5)
             base = Image.open(io.BytesIO(response.content)).convert("RGBA")
         except:
-            # Fallback nếu link ảnh lỗi: Tạo một nền màu xám đen
-            base = Image.new("RGBA", (900, 300), (43, 45, 49, 255)) 
+            base = Image.new("RGBA", (1000, 400), (43, 45, 49, 255)) 
             
-        base = base.resize((900, 300)) # Profile dạng thẻ ngang mỏng sẽ sang trọng hơn
+        base = base.resize((1000, 400))
 
-        # 2. Tạo lớp phủ (Dark Overlay) để làm nổi bật chữ
-        overlay = Image.new("RGBA", (900, 300), (0, 0, 0, 0))
+        # 2. Lớp phủ mờ (Dark Overlay)
+        overlay = Image.new("RGBA", (1000, 400), (0, 0, 0, 0))
         draw = ImageDraw.Draw(overlay)
-        # Vẽ khung đen mờ bo góc
-        draw.rounded_rectangle((20, 20, 880, 280), radius=20, fill=(0, 0, 0, 140))
+        draw.rounded_rectangle((20, 20, 980, 380), radius=20, fill=(0, 0, 0, 160))
         base = Image.alpha_composite(base, overlay)
 
-        # 3. Vẽ Avatar (Cắt tròn và thêm viền)
-        avatar_size = 180
+        # 3. Avatar siêu to khổng lồ (220x220)
+        avatar_size = 220
         try:
             avatar_url = user.display_avatar.url
             response_avatar = requests.get(avatar_url, timeout=5)
@@ -165,46 +160,54 @@ class EconomyCog(commands.Cog):
             
         avatar = avatar.resize((avatar_size, avatar_size))
         
-        # Tạo mask hình tròn
+        # Cắt Mask tròn
         mask = Image.new("L", (avatar_size, avatar_size), 0)
         draw_mask = ImageDraw.Draw(mask)
         draw_mask.ellipse((0, 0, avatar_size, avatar_size), fill=255)
         avatar = ImageOps.fit(avatar, mask.size, centering=(0.5, 0.5))
         avatar.putalpha(mask)
         
-        # Vẽ viền (Ring) quanh avatar
-        ring_color = (255, 215, 0, 255) # Màu Vàng Gold
+        # Viền Avatar Vàng Gold
+        ring_color = (255, 215, 0, 255) 
         ring_size = avatar_size + 10
         avatar_ring = Image.new("RGBA", (ring_size, ring_size), (0, 0, 0, 0))
         ring_draw = ImageDraw.Draw(avatar_ring)
         ring_draw.ellipse((0, 0, ring_size, ring_size), outline=ring_color, width=5)
         
         avatar_ring.paste(avatar, (5, 5), avatar)
-        base.paste(avatar_ring, (50, 55), avatar_ring)
+        base.paste(avatar_ring, (45, 80), avatar_ring)
 
-        # 4. Viết chữ
-        draw_text = ImageDraw.Draw(base)
-        
+        # 4. Viết chữ BẰNG PILMOJI (Tự động render Emoji)
         try:
-            font_title = ImageFont.truetype("Roboto-Bold.ttf", 55)
-            font_stats = ImageFont.truetype("Roboto-Bold.ttf", 35)
-            font_small = ImageFont.truetype("Roboto-Bold.ttf", 25)
+            font_title = ImageFont.truetype("Roboto-Bold.ttf", 60)
+            font_stats = ImageFont.truetype("Roboto-Bold.ttf", 45)
+            font_small = ImageFont.truetype("Roboto-Bold.ttf", 30)
         except:
-            font_title = ImageFont.load_default()
-            font_stats = ImageFont.load_default()
-            font_small = ImageFont.load_default()
+            font_title = font_stats = font_small = ImageFont.load_default()
 
-        text_start_x = 280
+        text_x = 320 # Tọa độ X của các cột text
         
-        draw_text.text((text_start_x, 60), f"{user.display_name}", font=font_title, fill=(255, 255, 255, 255))
-        draw_text.line([(text_start_x, 130), (840, 130)], fill=(255, 255, 255, 100), width=2)
+        # Dùng with Pilmoji để vẽ text có chứa emoji Discord
+        with Pilmoji(base) as pilmoji:
+            # Tên User
+            pilmoji.text((text_x, 70), f"{user.display_name}", font=font_title, fill=(255, 255, 255, 255))
+            
+            # Kẻ chỉ phân cách
+            draw_line = ImageDraw.Draw(base)
+            draw_line.line([(text_x, 160), (940, 160)], fill=(255, 255, 255, 100), width=3)
 
-        draw_text.text((text_start_x, 150), f"💳 WALLET", font=font_small, fill=(200, 200, 200, 255))
-        draw_text.text((text_start_x, 180), f"{balance:,} Coins", font=font_stats, fill=(255, 215, 0, 255)) 
-        
-        status_color = (255, 105, 180, 255) if partner_name != "Single" else (170, 170, 170, 255)
-        draw_text.text((580, 150), f"❤️ RELATIONSHIP", font=font_small, fill=(200, 200, 200, 255))
-        draw_text.text((580, 180), f"{partner_name}", font=font_stats, fill=status_color)
+            # Cột 1: VÍ TIỀN
+            pilmoji.text((text_x, 190), f"💳 WALLET", font=font_small, fill=(200, 200, 200, 255))
+            pilmoji.text((text_x, 240), f"{balance:,} {SYS_EMOJIS.COIN}", font=font_stats, fill=(255, 215, 0, 255)) 
+            
+            # Cột 2: TÌNH TRẠNG KẾT HÔN
+            status_color = (255, 105, 180, 255) if partner_name != "Single" else (170, 170, 170, 255)
+            pilmoji.text((650, 190), f"❤️ RELATIONSHIP", font=font_small, fill=(200, 200, 200, 255))
+            
+            if ring_emoji:
+                pilmoji.text((650, 240), f"{partner_name} {ring_emoji}", font=font_stats, fill=status_color)
+            else:
+                pilmoji.text((650, 240), f"{partner_name}", font=font_stats, fill=status_color)
 
         # 5. Xuất ảnh
         buffer = io.BytesIO()
@@ -212,12 +215,13 @@ class EconomyCog(commands.Cog):
         buffer.seek(0)
         return discord.File(buffer, filename=f"profile_{user.name}.png")
 
+
     # ==========================================
     # CÁC LỆNH CHÍNH (SLASH COMMANDS)
     # ==========================================
     
     @app_commands.command(name="work", description="Do some tasks to earn coins!")
-    @app_commands.checks.cooldown(1, 1800, key=lambda i: i.user.id) # Cooldown 30 phút
+    @app_commands.checks.cooldown(1, 1800, key=lambda i: i.user.id)
     async def work(self, i: discord.Interaction):
         self.check_user(i.user.id)
         
@@ -261,32 +265,38 @@ class EconomyCog(commands.Cog):
         self.check_user(user_id)
         
         conn = sqlite3.connect('bot_database.db')
-        cursor = conn.execute("SELECT balance, active_bg, partner_id FROM Economy WHERE user_id = ?", (user_id,))
+        cursor = conn.execute("SELECT balance, active_bg, partner_id, marriage_ring FROM Economy WHERE user_id = ?", (user_id,))
         data = cursor.fetchone()
         
         if not data:
             conn.close()
             return await i.followup.send("❌ This user doesn't have a profile yet!")
 
-        balance, active_bg, partner_id = data
+        balance, active_bg, partner_id, m_ring = data
         
         partner_name = "Single"
+        ring_emoji = ""
+        
         if partner_id:
             try:
                 partner_user = self.bot.get_user(partner_id) or await self.bot.fetch_user(partner_id)
                 partner_name = partner_user.name
-                if len(partner_name) > 12:
-                    partner_name = partner_name[:10] + "..."
+                if len(partner_name) > 10:
+                    partner_name = partner_name[:8] + "..."
+                    
+                if m_ring and m_ring in RING_SHOP:
+                    ring_emoji = RING_SHOP[m_ring]["emoji"]
             except:
                 partner_name = "Unknown"
             
         conn.close()
 
         try:
-            profile_file = await self.create_profile_card(target, balance, partner_name, active_bg or "Background 1")
+            profile_file = await self.create_profile_card(target, balance, partner_name, ring_emoji, active_bg or "Background 1")
             await i.followup.send(file=profile_file)
         except Exception as e:
             await i.followup.send(f"❌ Failed to generate profile card. Error: `{e}`")
+
 
     @app_commands.command(name="shop", description="View the item and background shop")
     async def shop(self, i: discord.Interaction):
@@ -348,6 +358,7 @@ class EconomyCog(commands.Cog):
         
         await i.response.send_message(f"🖼️ You bought and equipped the **{BG_SHOP[bg_type]['name']}** background! Check `/profile`.")
 
+
     @app_commands.command(name="equip_bg", description="Equip a background you already own")
     async def equip_bg(self, i: discord.Interaction):
         conn = sqlite3.connect('bot_database.db')
@@ -372,6 +383,7 @@ class EconomyCog(commands.Cog):
 
         await i.response.send_message("Pick your background:", view=SelectBgView(), ephemeral=True)
         conn.close()
+
 
     @app_commands.command(name="marry", description="Propose to another user!")
     @app_commands.choices(ring_type=[app_commands.Choice(name=v["name"], value=k) for k, v in RING_SHOP.items()])
@@ -400,6 +412,7 @@ class EconomyCog(commands.Cog):
         view = ProposalView(proposer=i.user, target=member, ring_type=ring_type)
         await i.response.send_message(f"💒 {member.mention}! {i.user.mention} is proposing to you with a {RING_SHOP[ring_type]['emoji']}! Do you accept?", view=view)
 
+
     @app_commands.command(name="divorce", description="Break up with your current partner")
     async def divorce(self, i: discord.Interaction):
         self.check_user(i.user.id)
@@ -419,13 +432,14 @@ class EconomyCog(commands.Cog):
 
         await i.response.send_message(f"💔 You have officially divorced <@{partner_id}>. You are now single.")
 
+
     @app_commands.command(name="dev_give", description="[ADMIN ONLY] Give Money or Rings for testing")
     @app_commands.describe(
         give_type="Choose what to give",
         amount="Amount (For coins or quantity of rings)"
     )
     @app_commands.choices(give_type=[
-        app_commands.Choice(name="Credits (Coins)", value="credits"),
+        app_commands.Choice(name="Credits (Coins)", value="balance"),
         app_commands.Choice(name="Plastic Ring", value="ring_plastic"),
         app_commands.Choice(name="Silver Ring", value="ring_silver"),
         app_commands.Choice(name="Gold Ring", value="ring_gold"),
@@ -441,11 +455,10 @@ class EconomyCog(commands.Cog):
         self.check_user(i.user.id)
         conn = sqlite3.connect('bot_database.db')
         
-        if give_type == "credits":
-            conn.execute("UPDATE Economy SET balance = balance + ? WHERE user_id = ?", (amount, i.user.id))
+        conn.execute(f"UPDATE Economy SET {give_type} = {give_type} + ? WHERE user_id = ?", (amount, i.user.id))
+        if give_type == "balance":
             msg = f"✅ Added {amount} {SYS_EMOJIS.COIN} to your wallet."
         else:
-            conn.execute(f"UPDATE Economy SET {give_type} = {give_type} + ? WHERE user_id = ?", (amount, i.user.id))
             msg = f"✅ Added {amount} items of type `{give_type}` to your inventory."
             
         conn.commit()
