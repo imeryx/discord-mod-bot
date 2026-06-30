@@ -417,14 +417,14 @@ class WistoriaRPG(commands.Cog):
         conn = sqlite3.connect('bot_database.db')
         player = conn.cursor().execute("SELECT * FROM WistoriaPlayers WHERE user_id = ?", (interaction.user.id,)).fetchone()
         conn.close()
-        if player: return await interaction.response.send_message("⚠️ You are already enrolled! Use `/profile`.", ephemeral=True)
+        if player: return await interaction.response.send_message("⚠️ You are already enrolled! Use `/wis_profile`.", ephemeral=True)
         
         embed = discord.Embed(title="🔮 The Magic Awakening Sphere", description="Touch the sphere to determine your path of power.", color=discord.Color.dark_purple())
         embed.set_image(url="https://images4.alphacoders.com/136/thumbbig-1368886.webp") 
         await interaction.response.send_message(embed=embed, view=FactionSelectView())
 
-    @app_commands.command(name="profile", description="View your detailed Rigarden Student Profile & Stats")
-    async def profile(self, interaction: discord.Interaction):
+    @app_commands.command(name="wis_profile", description="View your detailed Rigarden Student Profile & Stats")
+    async def wis_profile(self, interaction: discord.Interaction):
         conn = sqlite3.connect('bot_database.db')
         try:
             player = conn.cursor().execute("""
