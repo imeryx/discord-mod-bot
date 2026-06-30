@@ -94,6 +94,11 @@ class EconomyCog(commands.Cog):
                         balance INTEGER DEFAULT 0,
                         partner_id INTEGER DEFAULT NULL
                     )''')
+        conn.execute('''CREATE TABLE IF NOT EXISTS OwnedBackgrounds (
+                        user_id INTEGER,
+                        bg_key TEXT,
+                        PRIMARY KEY(user_id, bg_key)
+                    )''')
                     
         # 2. Nâng cấp cấu trúc (Migration) - Thêm các cột mới một cách an toàn
         new_columns = [
@@ -263,10 +268,39 @@ class EconomyCog(commands.Cog):
             return await i.response.send_message(f"❌ You need **{(price - balance):,} more** {SYS_EMOJIS.COIN}.", ephemeral=True)
         
         conn.execute("UPDATE Economy SET balance = balance - ?, active_bg = ? WHERE user_id = ?", (price, bg_type, i.user.id))
+        conn.execute("INSERT OR IGNORE INTO OwnedBackgrounds (user_id, bg_key) VALUES (?, ?)", (i.user.id, bg_type))
         conn.commit()
         conn.close()
         
         await i.response.send_message(f"🖼️ You bought and equipped the **{BG_SHOP[bg_type]['name']}** background! Check `/profile`.")
+
+    # 2. TẠO LỆNH MỚI: /equip_bg (Để thay đổi background cũ)
+    @app_commands.command(name="equip_bg", description="Equip a background you already own")
+    async def equip_bg(self, i: discord.Interaction):
+        # Lấy danh sách những cái đã mua
+        conn = sqlite3.connect('bot_database.db')
+        cursor = conn.execute("SELECT bg_key FROM OwnedBackgrounds WHERE user_id = ?", (i.user.id,))
+        owned = cursor.fetchall()
+        
+        if not owned:
+            conn.close()
+            return await i.response.send_message("❌ You don't own any background yet. Go to `/shop` to buy one!", ephemeral=True)
+
+        # Tạo View để chọn background đã sở hữu
+        options = [discord.SelectOption(label=BG_SHOP[row[0]]["name"], value=row[0]) for row in owned]
+        
+        class SelectBgView(discord.ui.View):
+            @discord.ui.select(placeholder="Choose your background...", options=options)
+            async def select_callback(self, interaction: discord.Interaction, select: discord.ui.Select):
+                new_bg = select.values[0]
+                conn = sqlite3.connect('bot_database.db')
+                conn.execute("UPDATE Economy SET active_bg = ? WHERE user_id = ?", (new_bg, interaction.user.id))
+                conn.commit()
+                conn.close()
+                await interaction.response.edit_message(content=f"✅ You have equipped **{BG_SHOP[new_bg]['name']}**!", view=None)
+
+        await i.response.send_message("Pick your background:", view=SelectBgView(), ephemeral=True)
+        conn.close()
 
     # ------------------------------------------
     # TÍNH NĂNG KẾT HÔN & LY HÔN
