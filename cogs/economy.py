@@ -88,6 +88,63 @@ class EconomyCog(commands.Cog):
     def setup_database(self):
         conn = sqlite3.connect('bot_database.db')
         
+    # HÀM VẼ PROFILE (DÙNG PILLOW)
+    # ==========================================
+    async def create_profile_card(self, user, balance, partner_name, bg_key):
+        # 1. Lấy hình nền
+        bg_url = self.BG_SHOP.get(bg_key, self.BG_SHOP["minimal"])["url"]
+        response = requests.get(bg_url)
+        base = Image.open(io.BytesIO(response.content)).convert("RGBA")
+        base = base.resize((900, 500)) # Kích thước chuẩn cho thẻ profile
+
+        # 2. Tạo lớp phủ mờ (Dark Overlay) để chữ dễ đọc hơn
+        overlay = Image.new("RGBA", (900, 500), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(overlay)
+        # Vẽ một hình chữ nhật đen mờ ở giữa
+        draw.rounded_rectangle((50, 50, 850, 450), radius=30, fill=(0, 0, 0, 160))
+        base = Image.alpha_composite(base, overlay)
+
+        # 3. Vẽ Avatar
+        avatar_url = user.display_avatar.url
+        response_avatar = requests.get(avatar_url)
+        avatar = Image.open(io.BytesIO(response_avatar.content)).convert("RGBA")
+        avatar = avatar.resize((150, 150))
+        
+        # Làm avatar hình tròn
+        mask = Image.new("L", (150, 150), 0)
+        draw_mask = ImageDraw.Draw(mask)
+        draw_mask.ellipse((0, 0, 150, 150), fill=255)
+        avatar = ImageOps.fit(avatar, mask.size, centering=(0.5, 0.5))
+        avatar.putalpha(mask)
+        
+        base.paste(avatar, (100, 100), avatar)
+
+        # 4. Viết chữ (Sử dụng font mặc định nếu không có file font)
+        draw_text = ImageDraw.Draw(base)
+        
+        # Chỉnh font (Bạn có thể tải file .ttf lên VPS để có font đẹp hơn)
+        try:
+            font_name = ImageFont.truetype("arial.ttf", 50)
+            font_info = ImageFont.truetype("arial.ttf", 35)
+        except:
+            font_name = ImageFont.load_default()
+            font_info = ImageFont.load_default()
+
+        # Vẽ tên User
+        draw_text.text((280, 120), f"{user.display_name}", font=font_name, fill="white")
+        
+        # Vẽ ví tiền
+        draw_text.text((280, 220), f"💰 Wallet: {balance:,} Coins", font=font_info, fill="#FFD700")
+        
+        # Vẽ trạng thái kết hôn
+        status_color = "#FF69B4" if partner_name != "Single" else "#AAAAAA"
+        draw_text.text((280, 300), f"❤️ Status: {partner_name}", font=font_info, fill=status_color)
+
+        # 5. Xuất ảnh
+        buffer = io.BytesIO()
+        base.save(buffer, format="PNG")
+        buffer.seek(0)
+        return discord.File(buffer, filename="profile.png")
         # 1. Vẫn giữ lệnh tạo bảng gốc để đề phòng trường hợp file chưa từng tồn tại
         conn.execute('''CREATE TABLE IF NOT EXISTS Economy (
                         user_id INTEGER PRIMARY KEY,
@@ -172,42 +229,37 @@ class EconomyCog(commands.Cog):
             await i.response.send_message(f"⏳ You need to rest! Try again in **{minutes}m {seconds}s**.", ephemeral=True)
 
     # ------------------------------------------
-    # LỆNH XEM PROFILE (HIỂN THỊ BACKGROUND)
-    # ------------------------------------------
-    @app_commands.command(name="profile", description="Check your balance, rings, and relationship")
+    # LỆNH PROFILE NÂNG CẤP
+    # ==========================================
+    @app_commands.command(name="profile", description="View your professional profile card")
     async def profile(self, i: discord.Interaction, member: discord.Member = None):
+        await i.response.defer() # Cần defer vì xử lý ảnh mất thời gian
+        
         target = member or i.user
-        self.check_user(target.id)
-
+        user_id = target.id
+        
         conn = sqlite3.connect('bot_database.db')
-        cursor = conn.execute("SELECT balance, ring_plastic, ring_silver, ring_gold, ring_diamond, ring_astrite, active_bg, partner_id, marriage_ring FROM Economy WHERE user_id = ?", (target.id,))
+        cursor = conn.execute("SELECT balance, active_bg, partner_id FROM Economy WHERE user_id = ?", (user_id,))
         data = cursor.fetchone()
+        
+        if not data:
+            conn.close()
+            return await i.followup.send("❌ This user doesn't have a profile yet!")
+
+        balance, active_bg, partner_id = data
+        
+        # Lấy tên người bạn đời
+        partner_name = "Single"
+        if partner_id:
+            partner_user = self.bot.get_user(partner_id) or await self.bot.fetch_user(partner_id)
+            partner_name = f"Married to {partner_user.name}"
+            
         conn.close()
 
-        balance, r_pla, r_sil, r_gol, r_dia, r_ast, active_bg, partner_id, m_ring = data
+        # Tạo file ảnh
+        profile_file = await self.create_profile_card(target, balance, partner_name, active_bg or "minimal")
         
-        partner_text = f"<@{partner_id}>" if partner_id else f"Single {SYS_EMOJIS.SINGLE}"
-        if partner_id and m_ring:
-            partner_text += f" (Married with {RING_SHOP[m_ring]['emoji']})"
-
-        embed = discord.Embed(title=f"👤 {target.display_name}'s Profile", color=0x2b2d31)
-        embed.set_thumbnail(url=target.display_avatar.url)
-        
-        # Nếu có mua background, set hình ảnh vào embed
-        if active_bg and active_bg in BG_SHOP:
-            embed.set_image(url=BG_SHOP[active_bg]["url"])
-            embed.set_footer(text=f"Equipped Background: {BG_SHOP[active_bg]['name']}")
-
-        embed.add_field(name=f"{SYS_EMOJIS.WALLET} Wallet", value=f"**{balance:,}** {SYS_EMOJIS.COIN}", inline=False)
-        
-        inventory = f"{SYS_EMOJIS.RING_PLASTIC} Plastic: **{r_pla}** | {SYS_EMOJIS.RING_SILVER} Silver: **{r_sil}**\n" \
-                    f"{SYS_EMOJIS.RING_GOLD} Gold: **{r_gol}** | {SYS_EMOJIS.RING_DIAMOND} Diamond: **{r_dia}**\n" \
-                    f"{SYS_EMOJIS.RING_ASTRITE} Astrite: **{r_ast}**"
-        
-        embed.add_field(name=f"{SYS_EMOJIS.INVENTORY} Ring Inventory", value=inventory, inline=False)
-        embed.add_field(name=f"{SYS_EMOJIS.MARRIED} Relationship", value=partner_text, inline=False)
-
-        await i.response.send_message(embed=embed)
+        await i.followup.send(file=profile_file)
 
     # ------------------------------------------
     # HỆ THỐNG CỬA HÀNG VÀ MUA SẮM
