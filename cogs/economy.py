@@ -320,3 +320,37 @@ class EconomyCog(commands.Cog):
 
 async def setup(bot):
     await bot.add_cog(EconomyCog(bot))
+
+    @app_commands.command(name="dev_give", description="[ADMIN ONLY] Give Money or Rings for testing")
+    @app_commands.describe(
+        give_type="Choose what to give",
+        amount="Amount (For coins or quantity of rings)"
+    )
+    @app_commands.choices(give_type=[
+        app_commands.Choice(name="Credits (Coins)", value="credits"),
+        app_commands.Choice(name="Plastic Ring", value="ring_plastic"),
+        app_commands.Choice(name="Silver Ring", value="ring_silver"),
+        app_commands.Choice(name="Gold Ring", value="ring_gold"),
+        app_commands.Choice(name="Diamond Ring", value="ring_diamond"),
+        app_commands.Choice(name="Astrite Ring", value="ring_astrite")
+    ])
+    async def dev_give(self, i: discord.Interaction, give_type: str, amount: int):
+        # THAY ID CỦA BẠN VÀO ĐÂY
+        MY_DISCORD_ID = 834054385746575380 
+        
+        if i.user.id != MY_DISCORD_ID:
+            return await i.response.send_message("⛔ Access Denied: Admin only!", ephemeral=True)
+
+        self.check_user(i.user.id)
+        conn = sqlite3.connect('bot_database.db')
+        
+        if give_type == "credits":
+            conn.execute("UPDATE Economy SET balance = balance + ? WHERE user_id = ?", (amount, i.user.id))
+            msg = f"✅ Added {amount} {SYS_EMOJIS.COIN} to your wallet."
+        else:
+            conn.execute(f"UPDATE Economy SET {give_type} = {give_type} + ? WHERE user_id = ?", (amount, i.user.id))
+            msg = f"✅ Added {amount} items of type `{give_type}` to your inventory."
+            
+        conn.commit()
+        conn.close()
+        await i.response.send_message(msg, ephemeral=True)
