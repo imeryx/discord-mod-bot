@@ -317,10 +317,6 @@ class EconomyCog(commands.Cog):
         conn.close()
 
         await i.response.send_message(f"💔 You have officially divorced <@{partner_id}>. You are now single.")
-
-async def setup(bot):
-    await bot.add_cog(EconomyCog(bot))
-
     @app_commands.command(name="dev_give", description="[ADMIN ONLY] Give Money or Rings for testing")
     @app_commands.describe(
         give_type="Choose what to give",
@@ -354,3 +350,7 @@ async def setup(bot):
         conn.commit()
         conn.close()
         await i.response.send_message(msg, ephemeral=True)
+async def setup(bot):
+    await bot.add_cog(EconomyCog(bot))
+
+    
