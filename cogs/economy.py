@@ -32,9 +32,9 @@ RING_SHOP = {
 }
 
 BG_SHOP = {
-    "Background 1": {"price": 15000, "name": "Background 1", "url": "https://i.imgur.com/example1.jpg"},
-    "Background 2": {"price": 30000, "name": "Background 2", "url": "https://i.imgur.com/example2.jpg"},
-    "Background 3": {"price": 50000, "name": "Background 3", "url": "https://i.imgur.com/example3.jpg"}
+    "Background 1": {"price": 15000, "name": "Background 1", "url": "https://i.pinimg.com/736x/d6/13/8a/d6138a6450396f542d668dc028c40ac9.jpg"},
+    "Background 2": {"price": 15000, "name": "Background 2", "url": "https://i.pinimg.com/736x/2f/68/0f/2f680f41b4840b65f6d9f12dcf386f48.jpg"},
+    "Background 3": {"price": 15000, "name": "Background 3", "url": "https://i.pinimg.com/736x/01/e1/e1/01e1e1bb80c522470f77cd863c302e4c.jpg"}
 }
 
 # ==========================================
