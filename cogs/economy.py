@@ -5,6 +5,7 @@ import sqlite3
 import random
 import io
 import requests
+from datetime import datetime
 from PIL import Image, ImageDraw, ImageFont, ImageOps
 from pilmoji import Pilmoji
 
@@ -58,10 +59,12 @@ class ProposalView(discord.ui.View):
             return await interaction.response.send_message("❌ This proposal is not for you!", ephemeral=True)
         
         self.stop()
+        now_str = datetime.now().strftime('%Y-%m-%d')
         conn = sqlite3.connect('bot_database.db')
         
-        conn.execute("UPDATE Economy SET partner_id = ?, marriage_ring = ? WHERE user_id = ?", (self.target.id, self.ring_type, self.proposer.id))
-        conn.execute("UPDATE Economy SET partner_id = ?, marriage_ring = ? WHERE user_id = ?", (self.proposer.id, self.ring_type, self.target.id))
+        # Cập nhật kết hôn kèm Ngày tháng và Reset mốc kỷ niệm
+        conn.execute("UPDATE Economy SET partner_id = ?, marriage_ring = ?, marriage_date = ?, anniversary_milestone = 0 WHERE user_id = ?", (self.target.id, self.ring_type, now_str, self.proposer.id))
+        conn.execute("UPDATE Economy SET partner_id = ?, marriage_ring = ?, marriage_date = ?, anniversary_milestone = 0 WHERE user_id = ?", (self.proposer.id, self.ring_type, now_str, self.target.id))
         
         col_name = f"ring_{self.ring_type}"
         conn.execute(f"UPDATE Economy SET {col_name} = {col_name} - 1 WHERE user_id = ?", (self.proposer.id,))
@@ -107,7 +110,9 @@ class EconomyCog(commands.Cog):
             ("ring_diamond", "INTEGER DEFAULT 0"),
             ("ring_astrite", "INTEGER DEFAULT 0"),
             ("active_bg", "TEXT DEFAULT NULL"),
-            ("marriage_ring", "TEXT DEFAULT NULL")
+            ("marriage_ring", "TEXT DEFAULT NULL"),
+            ("marriage_date", "TEXT DEFAULT NULL"),      # Ngày cưới (YYYY-MM-DD)
+            ("anniversary_milestone", "INTEGER DEFAULT 0") # Mốc thưởng cao nhất đã nhận (30, 100, 365...)
         ]
         
         for col_name, col_type in new_columns:
@@ -125,15 +130,59 @@ class EconomyCog(commands.Cog):
         conn.commit()
         conn.close()
 
+    # ------------------------------------------
+    # HÀM XỬ LÝ NHẬN THƯỞNG KỶ NIỆM TỰ ĐỘNG
+    # ------------------------------------------
+    def process_anniversaries(self, user_id):
+        conn = sqlite3.connect('bot_database.db')
+        cursor = conn.execute("SELECT partner_id, marriage_date, anniversary_milestone FROM Economy WHERE user_id = ?", (user_id,))
+        data = cursor.fetchone()
+        
+        if not data or not data[0] or not data[1]:
+            conn.close()
+            return []
+            
+        partner_id, m_date_str, milestone = data
+        try:
+            m_date = datetime.strptime(m_date_str, '%Y-%m-%d')
+        except:
+            conn.close()
+            return []
+            
+        days_married = (datetime.now() - m_date).days
+        rewards_msgs = []
+        
+        # Thiết lập các mốc quà tặng
+        MILESTONES = {
+            30: {"name": "1 Month", "reward": 50000},
+            100: {"name": "100 Days", "reward": 150000},
+            365: {"name": "1 Year", "reward": 500000}
+        }
+        
+        new_milestone = milestone
+        total_reward = 0
+        
+        for m_days, m_info in sorted(MILESTONES.items()):
+            if days_married >= m_days and milestone < m_days:
+                total_reward += m_info["reward"]
+                new_milestone = m_days
+                rewards_msgs.append(f"🎉 Happy **{m_info['name']}** Anniversary! You and <@{partner_id}> have been together for {days_married} days. You received a gift of **{m_info['reward']:,}** {SYS_EMOJIS.COIN}!")
+        
+        if total_reward > 0:
+            conn.execute("UPDATE Economy SET balance = balance + ?, anniversary_milestone = ? WHERE user_id = ?", (total_reward, new_milestone, user_id))
+            conn.commit()
+            
+        conn.close()
+        return rewards_msgs
+
     @commands.Cog.listener()
     async def on_ready(self):
-        print("-> Cog [Economy V3] loaded successfully with HD Pilmoji Profile!")
+        print("-> Cog [Economy V4] loaded successfully with Anniversaries & Datetimes!")
 
     # ==========================================
-    # HÀM VẼ PROFILE V2 (HỖ TRỢ EMOJI & KÍCH THƯỚC LỚN)
+    # HÀM VẼ PROFILE 
     # ==========================================
-    async def create_profile_card(self, user, balance, partner_name, ring_emoji, bg_key):
-        # 1. Khởi tạo hình nền 1000x400
+    async def create_profile_card(self, user, balance, partner_name, ring_emoji, marriage_date, bg_key):
         bg_url = BG_SHOP.get(bg_key, list(BG_SHOP.values())[0])["url"]
         try:
             response = requests.get(bg_url, timeout=5)
@@ -143,13 +192,11 @@ class EconomyCog(commands.Cog):
             
         base = base.resize((1000, 400))
 
-        # 2. Lớp phủ mờ (Dark Overlay)
         overlay = Image.new("RGBA", (1000, 400), (0, 0, 0, 0))
         draw = ImageDraw.Draw(overlay)
         draw.rounded_rectangle((20, 20, 980, 380), radius=20, fill=(0, 0, 0, 160))
         base = Image.alpha_composite(base, overlay)
 
-        # 3. Avatar siêu to khổng lồ (220x220)
         avatar_size = 220
         try:
             avatar_url = user.display_avatar.url
@@ -160,14 +207,12 @@ class EconomyCog(commands.Cog):
             
         avatar = avatar.resize((avatar_size, avatar_size))
         
-        # Cắt Mask tròn
         mask = Image.new("L", (avatar_size, avatar_size), 0)
         draw_mask = ImageDraw.Draw(mask)
         draw_mask.ellipse((0, 0, avatar_size, avatar_size), fill=255)
         avatar = ImageOps.fit(avatar, mask.size, centering=(0.5, 0.5))
         avatar.putalpha(mask)
         
-        # Viền Avatar Vàng Gold
         ring_color = (255, 215, 0, 255) 
         ring_size = avatar_size + 10
         avatar_ring = Image.new("RGBA", (ring_size, ring_size), (0, 0, 0, 0))
@@ -177,22 +222,19 @@ class EconomyCog(commands.Cog):
         avatar_ring.paste(avatar, (5, 5), avatar)
         base.paste(avatar_ring, (45, 80), avatar_ring)
 
-        # 4. Viết chữ BẰNG PILMOJI (Tự động render Emoji)
         try:
             font_title = ImageFont.truetype("Roboto-Bold.ttf", 60)
             font_stats = ImageFont.truetype("Roboto-Bold.ttf", 45)
             font_small = ImageFont.truetype("Roboto-Bold.ttf", 30)
+            font_tiny = ImageFont.truetype("Roboto-Bold.ttf", 20) # Font cho ngày tháng
         except:
-            font_title = font_stats = font_small = ImageFont.load_default()
+            font_title = font_stats = font_small = font_tiny = ImageFont.load_default()
 
-        text_x = 320 # Tọa độ X của các cột text
+        text_x = 320 
         
-        # Dùng with Pilmoji để vẽ text có chứa emoji Discord
         with Pilmoji(base) as pilmoji:
-            # Tên User
             pilmoji.text((text_x, 70), f"{user.display_name}", font=font_title, fill=(255, 255, 255, 255))
             
-            # Kẻ chỉ phân cách
             draw_line = ImageDraw.Draw(base)
             draw_line.line([(text_x, 160), (940, 160)], fill=(255, 255, 255, 100), width=3)
 
@@ -204,12 +246,27 @@ class EconomyCog(commands.Cog):
             status_color = (255, 105, 180, 255) if partner_name != "Single" else (170, 170, 170, 255)
             pilmoji.text((650, 190), f"❤️ RELATIONSHIP", font=font_small, fill=(200, 200, 200, 255))
             
-            if ring_emoji:
-                pilmoji.text((650, 240), f"{partner_name} {ring_emoji}", font=font_stats, fill=status_color)
+            if partner_name != "Single":
+                if ring_emoji:
+                    pilmoji.text((650, 240), f"{partner_name} {ring_emoji}", font=font_stats, fill=status_color)
+                else:
+                    pilmoji.text((650, 240), f"{partner_name}", font=font_stats, fill=status_color)
+                
+                # Render ngày cưới
+                if marriage_date:
+                    try:
+                        m_date_obj = datetime.strptime(marriage_date, '%Y-%m-%d')
+                        days_passed = (datetime.now() - m_date_obj).days
+                        date_display = f"Since {marriage_date} ({days_passed} days)"
+                    except:
+                        date_display = "Since: Unknown"
+                else:
+                    date_display = "Since: Unknown (Legacy)"
+                    
+                pilmoji.text((650, 295), date_display, font=font_tiny, fill=(200, 200, 200, 255))
             else:
                 pilmoji.text((650, 240), f"{partner_name}", font=font_stats, fill=status_color)
 
-        # 5. Xuất ảnh
         buffer = io.BytesIO()
         base.save(buffer, format="PNG")
         buffer.seek(0)
@@ -224,6 +281,9 @@ class EconomyCog(commands.Cog):
     @app_commands.checks.cooldown(1, 1800, key=lambda i: i.user.id)
     async def work(self, i: discord.Interaction):
         self.check_user(i.user.id)
+        
+        # Quét và tặng quà kỷ niệm nếu có
+        anniversary_msgs = self.process_anniversaries(i.user.id)
         
         tasks = [
             "Bạn đi làm thêm ca tối tại cửa hàng tiện lợi",
@@ -248,6 +308,12 @@ class EconomyCog(commands.Cog):
 
         embed = discord.Embed(title=f"{SYS_EMOJIS.WORK} Work Completed!", color=0x42f5a4)
         embed.description = f"{task_done} và nhận được **{earned:,}** {SYS_EMOJIS.COIN}!"
+        
+        # Chèn thông báo kỷ niệm vào embed (nếu có)
+        if anniversary_msgs:
+            embed.add_field(name="🎁 Anniversary Rewards", value="\n".join(anniversary_msgs), inline=False)
+            embed.color = discord.Color.gold()
+            
         await i.response.send_message(embed=embed)
 
     @work.error
@@ -255,6 +321,7 @@ class EconomyCog(commands.Cog):
         if isinstance(error, app_commands.CommandOnCooldown):
             minutes, seconds = divmod(int(error.retry_after), 60)
             await i.response.send_message(f"⏳ You need to rest! Try again in **{minutes}m {seconds}s**.", ephemeral=True)
+
 
     @app_commands.command(name="profile", description="View your professional profile card")
     async def profile(self, i: discord.Interaction, member: discord.Member = None):
@@ -264,15 +331,18 @@ class EconomyCog(commands.Cog):
         user_id = target.id
         self.check_user(user_id)
         
+        # Quét và tặng quà kỷ niệm trước khi render ảnh
+        anniversary_msgs = self.process_anniversaries(user_id)
+        
         conn = sqlite3.connect('bot_database.db')
-        cursor = conn.execute("SELECT balance, active_bg, partner_id, marriage_ring FROM Economy WHERE user_id = ?", (user_id,))
+        cursor = conn.execute("SELECT balance, active_bg, partner_id, marriage_ring, marriage_date FROM Economy WHERE user_id = ?", (user_id,))
         data = cursor.fetchone()
         
         if not data:
             conn.close()
             return await i.followup.send("❌ This user doesn't have a profile yet!")
 
-        balance, active_bg, partner_id, m_ring = data
+        balance, active_bg, partner_id, m_ring, m_date = data
         
         partner_name = "Single"
         ring_emoji = ""
@@ -292,8 +362,11 @@ class EconomyCog(commands.Cog):
         conn.close()
 
         try:
-            profile_file = await self.create_profile_card(target, balance, partner_name, ring_emoji, active_bg or "Background 1")
-            await i.followup.send(file=profile_file)
+            profile_file = await self.create_profile_card(target, balance, partner_name, ring_emoji, m_date, active_bg or "Background 1")
+            
+            # Gửi ảnh kèm theo thông báo nhận thưởng nếu có
+            content = "\n".join(anniversary_msgs) if anniversary_msgs else None
+            await i.followup.send(content=content, file=profile_file)
         except Exception as e:
             await i.followup.send(f"❌ Failed to generate profile card. Error: `{e}`")
 
@@ -425,8 +498,9 @@ class EconomyCog(commands.Cog):
             conn.close()
             return await i.response.send_message("❌ You are not married to anyone!", ephemeral=True)
 
-        conn.execute("UPDATE Economy SET partner_id = NULL, marriage_ring = NULL WHERE user_id = ?", (i.user.id,))
-        conn.execute("UPDATE Economy SET partner_id = NULL, marriage_ring = NULL WHERE user_id = ?", (partner_id,))
+        # Xóa toàn bộ dữ liệu kết hôn
+        conn.execute("UPDATE Economy SET partner_id = NULL, marriage_ring = NULL, marriage_date = NULL, anniversary_milestone = 0 WHERE user_id = ?", (i.user.id,))
+        conn.execute("UPDATE Economy SET partner_id = NULL, marriage_ring = NULL, marriage_date = NULL, anniversary_milestone = 0 WHERE user_id = ?", (partner_id,))
         conn.commit()
         conn.close()
 
