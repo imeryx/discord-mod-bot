@@ -275,7 +275,41 @@ class EconomyCog(commands.Cog):
 
     # ==========================================
     # CÁC LỆNH CHÍNH (SLASH COMMANDS)
-    # ==========================================
+    
+    @app_commands.command(name="transfer", description="Send coins to another user")
+    @app_commands.describe(member="The user you want to send coins to", amount="The amount of coins to send")
+    async def transfer(self, i: discord.Interaction, member: discord.Member, amount: int):
+        # 1. Các lớp kiểm tra an toàn cơ bản
+        if amount <= 0:
+            return await i.response.send_message("❌ Amount must be greater than 0!", ephemeral=True)
+            
+        if member.id == i.user.id or member.bot:
+            return await i.response.send_message("❌ You can't send coins to yourself or to a bot!", ephemeral=True)
+            
+        # 2. Đảm bảo cả 2 người đều có dữ liệu trong Database
+        self.check_user(i.user.id)
+        self.check_user(member.id)
+        
+        conn = sqlite3.connect('bot_database.db')
+        
+        # 3. Kiểm tra số dư của người gửi
+        cursor = conn.execute("SELECT balance FROM Economy WHERE user_id = ?", (i.user.id,))
+        sender_balance = cursor.fetchone()[0]
+        
+        if sender_balance < amount:
+            conn.close()
+            return await i.response.send_message(f"❌ You don't have enough coins! Your balance: **{sender_balance:,}** {SYS_EMOJIS.COIN}", ephemeral=True)
+            
+        # 4. Tiến hành trừ tiền người gửi và cộng tiền người nhận
+        conn.execute("UPDATE Economy SET balance = balance - ? WHERE user_id = ?", (amount, i.user.id))
+        conn.execute("UPDATE Economy SET balance = balance + ? WHERE user_id = ?", (amount, member.id))
+        conn.commit()
+        conn.close()
+        
+        # 5. Xuất thông báo thành công
+        embed = discord.Embed(title="💸 Transfer Successful!", color=0x3498db)
+        embed.description = f"{i.user.mention} has sent **{amount:,}** {SYS_EMOJIS.COIN} to {member.mention}!"
+        await i.response.send_message(embed=embed)
     
     @app_commands.command(name="work", description="Do some tasks to earn coins!")
     @app_commands.checks.cooldown(1, 1800, key=lambda i: i.user.id)
