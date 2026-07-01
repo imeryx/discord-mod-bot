@@ -5,56 +5,59 @@ import database
 import os
 import aiohttp
 import io
+import re
 
 class AutoRespond(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        # Regex pattern to identify Discord message link structures
+        self.discord_msg_pattern = re.compile(r"https?://(?:ptb\.|canary\.)?discord\.com/channels/(\d+)/(\d+)/(\d+)")
 
     @commands.Cog.listener()
     async def on_ready(self):
-        print("-> Cog [AutoRespond] Đã sẵn sàng (Upload ảnh trực tiếp từ RAM, không viền!)")
+        print("-> Cog [AutoRespond] V2 Ready (Integrated Discord CDN anti-expiration!)")
 
-    # ================= CÁC LỆNH CẤU HÌNH =================
-    @app_commands.command(name="add_response", description="Thêm một câu trả lời tự động cho server")
+    # ================= CONFIGURATION COMMANDS =================
+    @app_commands.command(name="add_response", description="Add an auto-response for the server")
     @app_commands.default_permissions(manage_guild=True)
     @app_commands.describe(
-        trigger="Từ khóa hoặc câu kích hoạt (Ví dụ: meo meo)",
-        response="[Tùy chọn] Câu trả lời bằng chữ của bot",
-        image_url="[Tùy chọn] Link ảnh trực tiếp hoặc GIF (http...)"
+        trigger="Trigger word or phrase (e.g., hello)",
+        response="[Optional] Bot's text response",
+        image_url="[Optional] Discord message link containing the image OR a regular image link"
     )
     async def add_response(self, interaction: discord.Interaction, trigger: str, response: str = None, image_url: str = None):
         if not response and not image_url:
-            return await interaction.response.send_message("❌ Bạn phải nhập câu trả lời chữ (`response`) hoặc điền link ảnh (`image_url`)!", ephemeral=True)
+            return await interaction.response.send_message("❌ You must provide a text response (`response`) or an image link (`image_url`)!", ephemeral=True)
         
         database.add_autoresponse(interaction.guild.id, trigger, response, image_url)
         
-        msg = f"✅ Đã thêm AutoResponse!\n• Khi ai đó gõ: `{trigger}`"
+        msg = f"✅ AutoResponse added!\n• When someone types: `{trigger}`"
         if response:
-            msg += f"\n• Bot sẽ đáp: **{response}**"
+            msg += f"\n• Bot will reply: **{response}**"
         if image_url:
-            msg += f"\n• Kèm theo link ảnh: [Nhấn vào để xem]({image_url})"
+            msg += f"\n• Saved image source: [Click to view]({image_url})"
             
         await interaction.response.send_message(msg, ephemeral=True)
 
-    @app_commands.command(name="remove_response", description="Xóa một câu trả lời tự động")
+    @app_commands.command(name="remove_response", description="Remove an auto-response")
     @app_commands.default_permissions(manage_guild=True)
     async def remove_response(self, interaction: discord.Interaction, trigger: str):
         success = database.remove_autoresponse(interaction.guild.id, trigger)
         if success:
-            await interaction.response.send_message(f"🗑️ Đã xóa trả lời tự động cho từ khóa `{trigger}`!", ephemeral=True)
+            await interaction.response.send_message(f"🗑️ Deleted auto-response for trigger `{trigger}`!", ephemeral=True)
         else:
-            await interaction.response.send_message(f"⚠️ Không tìm thấy từ khóa `{trigger}` trong hệ thống.", ephemeral=True)
+            await interaction.response.send_message(f"⚠️ Could not find trigger `{trigger}` in the system.", ephemeral=True)
 
-    @app_commands.command(name="list_responses", description="Xem danh sách các câu trả lời tự động hiện có")
+    @app_commands.command(name="list_responses", description="View the list of current auto-responses")
     @app_commands.default_permissions(manage_guild=True)
     async def list_responses(self, interaction: discord.Interaction):
         responses = database.get_autoresponses(interaction.guild.id)
         if not responses:
-            return await interaction.response.send_message("⚠️ Server này hiện chưa cài đặt AutoResponse nào.", ephemeral=True)
+            return await interaction.response.send_message("⚠️ This server doesn't have any AutoResponses setup yet.", ephemeral=True)
         
         embed = discord.Embed(
-            title="🤖 Danh Sách Trả Lời Tự Động",
-            description="Dưới đây là các từ khóa và phản hồi mà bot đã ghi nhớ:\n" + "━"*30,
+            title="🤖 Auto-Response List",
+            description="Below are the triggers and responses the bot has memorized:\n" + "━"*30,
             color=discord.Color.blurple()
         )
         
@@ -62,26 +65,32 @@ class AutoRespond(commands.Cog):
             if resp:
                 display_resp = resp if len(resp) <= 60 else resp[:57] + "..."
             else:
-                display_resp = "*(Chỉ gửi ảnh)*"
+                display_resp = "*(Image only)*"
             
-            img_status = " 📸 *(Có kèm ảnh)*" if img else ""
+            # Display different icons depending on whether it's a normal link or a message link
+            if img and "discord.com/channels" in img:
+                img_status = " 🔗 *(Has image coordinates)*"
+            elif img:
+                img_status = " 📸 *(Has attached image)*"
+            else:
+                img_status = ""
             
             embed.add_field(
-                name=f"{idx}. Từ khóa: `{trig}`",
-                value=f"↳ **Đáp lại:** {display_resp}{img_status}",
+                name=f"{idx}. Trigger: `{trig}`",
+                value=f"↳ **Reply:** {display_resp}{img_status}",
                 inline=False 
             )
             
             if idx == 25:
-                embed.set_footer(text=f"Và còn nhiều từ khóa khác... (Đang hiển thị 25 mục đầu tiên)")
+                embed.set_footer(text=f"And many more triggers... (Showing first 25 items)")
                 break
                 
         if len(responses) <= 25:
-            embed.set_footer(text=f"Tổng cộng: {len(responses)} câu trả lời tự động.")
+            embed.set_footer(text=f"Total: {len(responses)} auto-responses.")
 
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
-    # ================= XỬ LÝ LẮNG NGHE TIN NHẮN =================
+    # ================= MESSAGE LISTENER =================
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
         if message.author.bot or not message.guild:
@@ -100,34 +109,60 @@ class AutoRespond(commands.Cog):
                     if response:
                         kwargs['content'] = response
                     
-                    if image_url:
-                        if image_url.startswith("http"):
-                            # Tuyệt chiêu: Tải ảnh từ URL vào RAM và gửi như 1 file đính kèm thật
-                            async with aiohttp.ClientSession() as session:
-                                async with session.get(image_url) as resp:
-                                    if resp.status == 200:
-                                        # Kiem tra xem link co phai la file anh thuc su khong
-                                        content_type = resp.headers.get('Content-Type', '')
-                                        if 'image' in content_type or 'video' in content_type:
-                                            img_bytes = await resp.read()
-                                            ext = content_type.split('/')[-1] # lay duoi png, gif, jpeg
-                                            # Gắn vào payload như 1 file bình thường
-                                            kwargs['file'] = discord.File(io.BytesIO(img_bytes), filename=f"image.{ext}")
-                                        else:
-                                            # Neu link khong phai anh (vd: link tenor.com/xxx), tra ve text de Discord tu render
-                                            kwargs['content'] = f"{kwargs.get('content', '')}\n{image_url}".strip()
-                        
-                        elif os.path.exists(image_url):
-                            # Tương thích với các file cũ đang nằm ở thư mục saved_images trên VPS
-                            filename = os.path.basename(image_url)
-                            kwargs['file'] = discord.File(image_url, filename=filename)
+                    target_download_url = image_url
 
-                    # Gửi tin nhắn ra chat
+                    if image_url:
+                        # 1. CHECK: Is this a Discord message link or a regular image link?
+                        match = self.discord_msg_pattern.match(image_url)
+                        if match:
+                            _, channel_id, message_id = match.groups()
+                            try:
+                                # Fetch the original channel and message to bypass the 24h CDN limit
+                                source_channel = self.bot.get_channel(int(channel_id))
+                                if not source_channel:
+                                    source_channel = await self.bot.fetch_channel(int(channel_id))
+                                    
+                                source_message = await source_channel.fetch_message(int(message_id))
+                                
+                                if source_message.attachments:
+                                    # Generate a fresh CDN link
+                                    target_download_url = source_message.attachments[0].url
+                                else:
+                                    target_download_url = None
+                                    print("⚠️ Source message does not contain any image files!")
+                            except discord.NotFound:
+                                target_download_url = None
+                                print("❌ The source message containing the AutoRespond image was deleted.")
+                            except Exception as e:
+                                target_download_url = None
+                                print(f"❌ Could not fetch message coordinates: {e}")
+
+                        # 2. DOWNLOAD IMAGE: Use the newly obtained link (or external link) to load into RAM
+                        if target_download_url:
+                            if target_download_url.startswith("http"):
+                                async with aiohttp.ClientSession() as session:
+                                    async with session.get(target_download_url) as resp:
+                                        if resp.status == 200:
+                                            content_type = resp.headers.get('Content-Type', '')
+                                            if 'image' in content_type or 'video' in content_type:
+                                                img_bytes = await resp.read()
+                                                ext = content_type.split('/')[-1] 
+                                                # Attach to payload as a normal file, no embed borders!
+                                                kwargs['file'] = discord.File(io.BytesIO(img_bytes), filename=f"image.{ext}")
+                                            else:
+                                                # Fallback if the returned file format is unknown
+                                                kwargs['content'] = f"{kwargs.get('content', '')}\n{target_download_url}".strip()
+                            
+                            elif os.path.exists(target_download_url):
+                                filename = os.path.basename(target_download_url)
+                                kwargs['file'] = discord.File(target_download_url, filename=filename)
+
+                    # Send all data to the channel smoothly
                     if kwargs:
                         await message.channel.send(**kwargs)
                             
                 except Exception as e:
-                    print(f"Lỗi gửi AutoRespond: {e}")
+                    print(f"Error sending AutoRespond: {e}")
                 
                 break 
 
