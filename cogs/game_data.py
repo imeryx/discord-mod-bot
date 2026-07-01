@@ -145,3 +145,5 @@ MATERIALS = {
     "mat_dragon_blood": {"name": "Dragon Blood", "emoji": "🩸", "tier": "Epic", "desc": "Boiling biological fluid capable of unlocking hidden weapon potentials."},
     "mat_mercedes_gem": {"name": "Mercedes Crystal", "emoji": "👑", "tier": "Mythic", "desc": "A legendary gemstone found near the top of the tower. Required for Tier SS upgrades."}
 }
+async def setup(bot):
+    pass # Hàm giả để Discord bot không báo lỗi nữa
